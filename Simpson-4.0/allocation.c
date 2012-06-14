@@ -3,6 +3,8 @@
  *
  *  Created on: 22.5.2012
  *      Author: zdenek
+ *
+ *  This is not needed yet, only to test how to code macros
  */
 #include <stdio.h>
 #include <stdlib.h>
