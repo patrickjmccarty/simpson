@@ -18,8 +18,10 @@
 #include "fftw3.h"
 
 	/* for acurate timings on windows */
-#include <windows.h>
-#include <winbase.h>
+//#include <windows.h>
+//#include <winbase.h>
+//#define TIMING
+#include "timing.h"
 
 // Result = +1 if there is symmetry, -1 otherwise
 int is_rhosymmetry(mat_complx *fstart, mat_complx *fdetect)
@@ -1702,8 +1704,11 @@ void new_gcompute_freq(Sim_info *sim, Sim_wsp *wsp)
 	double *freq, *dptr;
 	int *irow, *icol, *ic;
 
-	LARGE_INTEGER tv1, tv2, tv3, tv4, tickpsec;
-	QueryPerformanceFrequency(&tickpsec);
+	//LARGE_INTEGER tv1, tv2, tv3, tv4, tickpsec;
+	//QueryPerformanceFrequency(&tickpsec);
+	TIMING_INIT_VAR(tv1);
+	TIMING_INIT_VAR(tv2);
+	TIMING_INIT;
 
 	Ng = sim->ngamma;
 	matdim = sim->matdim;
@@ -1713,7 +1718,8 @@ void new_gcompute_freq(Sim_info *sim, Sim_wsp *wsp)
 	wsp->acqblock_sto = k = ACQBLOCK_STO_INI;
 
 	// evaluate pulse sequence to generate gamma-dependent sigma and props
-	QueryPerformanceCounter(&tv1);
+	//QueryPerformanceCounter(&tv1);
+	TIMING_TIC(tv1);
 	for (ig=0;ig<Ng;ig++) {
 		DEBUGPRINT("new_gcompute_freq -> ig = %d\n",ig);
 		wsp->tstart = t0 = ig/(double)Ng*sim->taur;
@@ -1736,8 +1742,9 @@ void new_gcompute_freq(Sim_info *sim, Sim_wsp *wsp)
 		}
 		wsp->cryst.gamma += 360.0/(double)sim->ngamma;
 	}
-	QueryPerformanceCounter(&tv2);
-	printf("timing eval_pulseq: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+	//QueryPerformanceCounter(&tv2);
+	//printf("timing eval_pulseq: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+	TIMING_TOC(tv1,tv2,"NEW timing eval_pulseq");
 
 	l = wsp->acqblock_sto - 1;
 	DEBUGPRINT("new_gcompute_freq: sigmas and propagators from %d to %d\n",k,l);
@@ -1764,7 +1771,8 @@ void new_gcompute_freq(Sim_info *sim, Sim_wsp *wsp)
 			wsp->fdetect = cm_adjoint(sim->fdetect);
 	}
 	det = wsp->matrix[l+1] = cm_change_basis_2(wsp->fdetect,Ud->basis,sim);
-	QueryPerformanceCounter(&tv1);
+	//QueryPerformanceCounter(&tv1);
+	TIMING_TIC(tv1);
 	if (wsp->matrix[k] == NULL) {
 		if (sim->EDsymmetry == 1) { // ED symmetry present
 			if (blk_cm_isdiag(Ud)) {
@@ -1862,8 +1870,9 @@ void new_gcompute_freq(Sim_info *sim, Sim_wsp *wsp)
 		//}
 	}
 	// END of transformations
-	QueryPerformanceCounter(&tv2);
-	printf("timing transformations: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+	//QueryPerformanceCounter(&tv2);
+	//printf("timing transformations: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+	TIMING_TOC(tv1,tv2,"NEW timing transformations");
 
 	freq = dptr = (double*)malloc(matdim*sizeof(double));
 	for (i=0; i<Ud->Nblocks; i++) {
@@ -1880,7 +1889,7 @@ void new_gcompute_freq(Sim_info *sim, Sim_wsp *wsp)
 
 	// fork from here to ED symmetry specific calculation
 	if (sim->EDsymmetry == 1) {
-		QueryPerformanceCounter(&tv1);
+		//QueryPerformanceCounter(&tv1);
 		double binsize = sim->sw*2*M_PI/sim->np;
 	    fftw_complex *fftin1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * Ng);
 	    fftw_complex *fftout1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * Ng);
@@ -1906,8 +1915,8 @@ void new_gcompute_freq(Sim_info *sim, Sim_wsp *wsp)
 	    		}
 	    	}
 	    }
-		QueryPerformanceCounter(&tv2);
-		printf("timing acq after scan contrib: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+		//QueryPerformanceCounter(&tv2);
+		//printf("timing acq after scan contrib: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 	    int nnz = irow[matdim] - 1;
 	    complx *qdata = (complx *)malloc(nnz*Ng*sizeof(complx));
 	    ic = icol;
@@ -1936,8 +1945,8 @@ void new_gcompute_freq(Sim_info *sim, Sim_wsp *wsp)
 	    		ic++;
 	    	}
 	    }
-		QueryPerformanceCounter(&tv2);
-		printf("timing acq after FFT: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+		//QueryPerformanceCounter(&tv2);
+		//printf("timing acq after FFT: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 	    mat_complx dum;
 	    dum.irow = irow;
 	    dum.icol = icol;
@@ -1979,13 +1988,13 @@ void new_gcompute_freq(Sim_info *sim, Sim_wsp *wsp)
 			free_complx_matrix(wsp->matrix[i+Ng]);
 			wsp->matrix[i+Ng] = NULL;
 		}
-		QueryPerformanceCounter(&tv2);
-		printf("timing acq after spectrum generation: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+		//QueryPerformanceCounter(&tv2);
+		//printf("timing acq after spectrum generation: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 		return;
 	}
 	// END of ED symmetry calculation
 
-	QueryPerformanceCounter(&tv1);
+	//QueryPerformanceCounter(&tv1);
 	// construct the spectrum
 	double binsize = sim->sw*2*M_PI/sim->np;
 	//printf("binsize = %g\n",binsize);
@@ -1999,8 +2008,8 @@ void new_gcompute_freq(Sim_info *sim, Sim_wsp *wsp)
     irow = (int*)malloc((matdim+1)*sizeof(int));
     icol = ic = (int*)malloc(matdim*matdim*sizeof(int)); // just large enough
     scan_contrib(&wsp->matrix[k],Ng,irow,icol);
-	QueryPerformanceCounter(&tv2);
-	printf("timing acq after scan contrib: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+	//QueryPerformanceCounter(&tv2);
+	//printf("timing acq after scan contrib: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 
     if (sim->interpolation == 1) { // FWT interpolation
     	// now I am sure the file exists
@@ -2095,8 +2104,8 @@ void new_gcompute_freq(Sim_info *sim, Sim_wsp *wsp)
 		free_complx_matrix(wsp->matrix[i+Ng]);
 		wsp->matrix[i+Ng] = NULL;
 	}
-	QueryPerformanceCounter(&tv2);
-	printf("timing acq after spectrum generation: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+	//QueryPerformanceCounter(&tv2);
+	//printf("timing acq after spectrum generation: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 
 }
 
@@ -2514,10 +2523,11 @@ void new_gcompute_time(Sim_info *sim, Sim_wsp *wsp)
 	double *freq, *dptr;
 	int *irow, *icol, *ic;
 
-	LARGE_INTEGER tv1, tv2, tv3, tv4, tickpsec;
-	QueryPerformanceFrequency(&tickpsec);
-
-	//printf("\nNEW GCOMPUTE TIME DOMAIN\n");
+	//LARGE_INTEGER tv1, tv2, tv3, tv4, tickpsec;
+	//QueryPerformanceFrequency(&tickpsec);
+	TIMING_INIT;
+	TIMING_INIT_VAR(tv1);
+	TIMING_INIT_VAR(tv2);
 
 	Ng = sim->ngamma;
 	matdim = sim->matdim;
@@ -2534,7 +2544,7 @@ void new_gcompute_time(Sim_info *sim, Sim_wsp *wsp)
 	wsp->acqblock_sto = k = ACQBLOCK_STO_INI;
 
 	// evaluate pulse sequence to generate gamma-dependent sigma and props
-	QueryPerformanceCounter(&tv1);
+	TIMING_TIC(tv1);
 	for (ig=0;ig<Ng;ig++) {
 		DEBUGPRINT("new_gcompute_freq -> ig = %d\n",ig);
 		wsp->tstart = t0 = ig/(double)Ng*sim->taur;
@@ -2557,8 +2567,7 @@ void new_gcompute_time(Sim_info *sim, Sim_wsp *wsp)
 		}
 		wsp->cryst.gamma += 360.0/(double)sim->ngamma;
 	}
-	QueryPerformanceCounter(&tv2);
-	//printf("timing eval_pulseq: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+	TIMING_TOC(tv1,tv2,"eval_pulseq");
 
 	l = wsp->acqblock_sto - 1;
 	DEBUGPRINT("new_gcompute_freq: sigmas and propagators from %d to %d\n",k,l);
@@ -2577,7 +2586,6 @@ void new_gcompute_time(Sim_info *sim, Sim_wsp *wsp)
 	}
 
 	// transformations of dens.matrix and detect op.
-	QueryPerformanceCounter(&tv1);
 	Ud = wsp->STO[l];
 	//blk_cm_print(Ud,"new_gcompute Ud");
 	if (sim->acq_adjoint) {
@@ -2723,12 +2731,11 @@ void new_gcompute_time(Sim_info *sim, Sim_wsp *wsp)
 
 
 	// get relevant elements
-	QueryPerformanceCounter(&tv1);
+	TIMING_TIC(tv1);
     irow = (int*)malloc((matdim+1)*sizeof(int));
     icol = ic = (int*)malloc(matdim*matdim*sizeof(int)); // just large enough
     scan_contrib(&wsp->matrix[k],Ng,irow,icol);
-	QueryPerformanceCounter(&tv2);
-	//printf("timing scan_contrib: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+	TIMING_TOC(tv1,tv2,"scan_contrib");
 
     if (sim->interpolation == 1) { // FWT interpolation
     	// now I am sure the file exists
@@ -2747,7 +2754,6 @@ void new_gcompute_time(Sim_info *sim, Sim_wsp *wsp)
     	}
     }
 
-	QueryPerformanceCounter(&tv3);
     complx *phmul = (complx*)malloc(Ng*sizeof(complx));
     complx *Frs = complx_vector(Ng);
     for (r=1; r<=matdim; r++) {
@@ -2763,7 +2769,6 @@ void new_gcompute_time(Sim_info *sim, Sim_wsp *wsp)
         		ic++;
         		continue;
     		}
-    		//QueryPerformanceCounter(&tv1);
 			diff = freq[r-1] - freq[*ic-1];
 			complx ph = Cexpi(-diff*dtg*1.0e-6);
 		    phmul[0] = Cunit;
@@ -2802,9 +2807,6 @@ void new_gcompute_time(Sim_info *sim, Sim_wsp *wsp)
 			} // Frs[] vector ready to use
 			//printf("elem r = %d, s = %d\n",r, *ic);
 			//cv_print(Frs,"Frs");
-    		//QueryPerformanceCounter(&tv2);
-    		//printf("timing g-ave contrib: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
-    		//QueryPerformanceCounter(&tv1);
     		ph = Cunit;
     		zz2 = Cexpi(diff*dtg*m*1.0e-6);
     		for (i=0; i<wsp->Nacq; i++) {
@@ -2814,14 +2816,9 @@ void new_gcompute_time(Sim_info *sim, Sim_wsp *wsp)
     			wsp->fid[i+1].im += zz1.im;
     			ph = Cmul(ph,zz2);
     		}
-    		//QueryPerformanceCounter(&tv2);
-    		//printf("timing fid contrib: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
-
 			ic++;
     	}
     }
-	QueryPerformanceCounter(&tv4);
-	//printf("timing fid contrib: %.9f\n",((float)(tv4.QuadPart-tv3.QuadPart))/(float)tickpsec.QuadPart);
 
 	if ( fabs(wsp->acqphase) > TINY ) {
     	cv_mulc(wsp->fid,acqph);

@@ -527,7 +527,7 @@ void sim_destroy(Sim_info* s, int this_is_copy)
   if (!this_is_copy) {
 	  rfprof_free(s->rfdata);
 	  cryst_free(s->crdata);
-	  if (s->interpolation > 0) cryst_free(s->targetcrdata);
+	  if (s->interpolation == 1) cryst_free(s->targetcrdata);
   }
 
   if (s->tridata != NULL) triangle_free(s->tridata);
