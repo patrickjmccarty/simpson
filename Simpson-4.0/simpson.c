@@ -73,11 +73,11 @@ typedef struct _td{
   Ave_elem *ave_struct;
   int Navepar, Naveval;
   double *ave_weight;
-  complx *fid;
+  complx **fids;
   double phase;
 } thread_data;
 
-thread_data *thrd;
+thread_data thrd;
 
 int getbits(int* e,char *bits)
 {
@@ -115,25 +115,10 @@ void thread_work(int thread_id, Tcl_Interp *interp){
   int i, Np_start, ncr_start, icr, nrf_start, irf, nz_start, iz;
   int ave_start;
 
-  int num_threads = glob_info.num_threads;
-  int process_id = glob_info.mpi_rank;
-  int num_processes = glob_info.mpi_size;
-  int Ntot = thrd[thread_id].Ntot;
-  int ncr = thrd[thread_id].ncr;
-  int nrf = thrd[thread_id].nrf;
-  int nz = thrd[thread_id].nz;
   Sim_info *sim = thrd[thread_id].sim;
-  //double **rfdata = thrd[thread_id].rfdata;
-  //Cryst *crdata = thrd[thread_id].crdata;
-  double *zvals = thrd[thread_id].zvals;
-  double *zoffsetvals = thrd[thread_id].zoffsetvals;
-  //const char *state = thrd[thread_id].state;
-  int Navepar = thrd[thread_id].Navepar;
-  int Naveval = thrd[thread_id].Naveval;
-  double *ave_weight = thrd[thread_id].ave_weight;
-  Ave_elem *ave_struct = thrd[thread_id].ave_struct;
+  int Naveval = thrd.Naveval;
 
-  fidsum = thrd[thread_id].fid = complx_vector(sim->ntot);
+  fidsum = thrd.fid[thread_id] = complx_vector(sim->ntot);
   cv_zero(fidsum);
   wsp = wsp_initialize(sim);
   /* store sim and wsp memory addresses to Tcl interp */
@@ -144,30 +129,30 @@ void thread_work(int thread_id, Tcl_Interp *interp){
   i=0;
   while (1) {
 	  // WARNING!!! This works ONLY IF all MPI slaves have the same number of threads!!!
-	  Np_start = process_id + thread_id*num_processes + num_processes*num_threads*i;
-	  if (Np_start >= Ntot) break;
-	  ncr_start = Np_start/nrf/nz/Naveval;
-	  nrf_start = (Np_start-ncr_start*nrf*nz*Naveval)/nz/Naveval;
-	  nz_start = (Np_start-ncr_start*nrf*nz*Naveval-nrf_start*nz*Naveval)/Naveval;
-	  ave_start = Np_start - nz_start*Naveval - nrf_start*Naveval*nz - ncr_start*Naveval*nrf*nz;
+	  Np_start = glob_info.mpi_rank + thread_id*glob_info.mpi_size + glob_info.mpi_size*glob_info.num_threads*i;
+	  if (Np_start >= thrd.Ntot) break;
+	  ncr_start = Np_start/thrd.nrf/thrd.nz/Naveval;
+	  nrf_start = (Np_start-ncr_start*thrd.nrf*thrd.nz*Naveval)/thrd.nz/Naveval;
+	  nz_start = (Np_start-ncr_start*thrd.nrf*thrd.nz*Naveval-nrf_start*thrd.nz*Naveval)/Naveval;
+	  ave_start = Np_start - nz_start*Naveval - nrf_start*Naveval*thrd.nz - ncr_start*Naveval*thrd.nrf*thrd.nz;
 	  icr = ncr_start+1;
 	  irf = nrf_start+1;
 	  iz = nz_start+1;
-	  weight = sim->crdata[icr].weight * sim->rfdata[irf][sim->ss->nchan+1] * ave_weight[ave_start];
+	  weight = sim->crdata[icr].weight * sim->rfdata[irf][sim->ss->nchan+1] * thrd.ave_weight[ave_start];
 	  wsp->cryst =sim->crdata[icr];
 	  wsp->cryst_idx = icr;
 	  wsp->rffac = sim->rfdata[irf];
-	  wsp->zcoor = zvals[iz];
-	  set_inhom_offsets(sim,wsp,zoffsetvals[iz]);
-	  set_averaging_parameters(sim,wsp,ave_struct,Navepar,ave_start);
+	  wsp->zcoor = thrd.zvals[iz];
+	  set_inhom_offsets(sim,wsp,thrd.zoffsetvals[iz]);
+	  set_averaging_parameters(sim,wsp,thrd.ave_struct,thrd.Navepar,ave_start);
 	  sim_calcfid(sim, wsp);
 	  cv_multod(fidsum, wsp->fid, weight);
 	  //printf("process (%i/%i): fidsum[end].re = %f\n", process_id, thread_id, fidsum[sim->ntot].re);
 	  if (verbose & VERBOSE_PROGRESS) {
-		  printf("Worker %i/%i: [cryst %d/%d]",thread_id+1,process_id+1,icr,ncr);
-		  if (nrf > 1) printf(" [rfsc %d/%d]",irf,nrf);
-		  if (nz > 1) printf(" [z-coor %d/%d]",iz,nz);
-		  if (Navepar > 0) printf(" [ave %d/%d]",ave_start+1,Naveval);
+		  printf("Worker %i/%i: [cryst %d/%d]",thread_id+1,glob_info.mpi_rank+1,icr,thrd.ncr);
+		  if (thrd.nrf > 1) printf(" [rfsc %d/%d]",irf,thrd.nrf);
+		  if (thrd.nz > 1) printf(" [z-coor %d/%d]",iz,thrd.nz);
+		  if (thrd.Navepar > 0) printf(" [ave %d/%d]",ave_start+1,Naveval);
 		  printf("\n");
 		  //printf("Worker %i/%i: [cryst %d/%d] [rfsc %d/%d] [z-coor %d/%d]\n", thread_id+1,process_id+1,icr,ncr,irf,nrf,iz,nz);
 		  fflush(stdout);
@@ -184,44 +169,33 @@ void thread_work_interpol_source(int thread_id, Tcl_Interp *interp) {
 	int i, icr;
 	char buf[256];
 
-	int ncr = thrd[thread_id].ncr;
-	int irf = thrd[thread_id].nrf;
-	int iz = thrd[thread_id].nz;
-	Sim_info *sim = thrd[thread_id].sim;
-	//double **rfdata = thrd[thread_id].rfdata;
-	//Cryst *crdata = thrd[thread_id].crdata;
-	double *zvals = thrd[thread_id].zvals;
-	double *zoffsetvals = thrd[thread_id].zoffsetvals;
-
-	int Navepar = thrd[thread_id].Navepar;
-	int ave_start = thrd[thread_id].Naveval;
-	Ave_elem *ave_struct = thrd[thread_id].ave_struct;
+	Sim_info *sim = thrd.sim;
 
 	wsp = wsp_initialize(sim);
 	/* store sim and wsp memory addresses to Tcl interp */
 	store_sim_pointers(interp, sim, wsp);
 	wsp->interp = interp;
 	wsp->thread_id = thread_id;
-	sprintf(buf,"%s_P%d_T%d.bin",sim->parname,glob_info.mpi_rank,thread_id);
-	wsp->interpol_file = fopen(buf,"wb");
-	if (!wsp->interpol_file) {
-		fprintf(stderr,"Error: can not create temporary file %s\n",buf);
-		exit(1);
-	}
+	//sprintf(buf,"%s_P%d_T%d.bin",sim->parname,glob_info.mpi_rank,thread_id);
+	//wsp->interpol_file = fopen(buf,"wb");
+	//if (!wsp->interpol_file) {
+	//	fprintf(stderr,"Error: can not create temporary file %s\n",buf);
+	//	exit(1);
+	//}
 
-	set_averaging_parameters(sim,wsp,ave_struct,Navepar,ave_start);
-	wsp->rffac = sim->rfdata[irf];
-	wsp->zcoor = zvals[iz];
-	set_inhom_offsets(sim,wsp,zoffsetvals[iz]);
+	set_averaging_parameters(sim,wsp,thrd.ave_struct,thrd.Navepar,thrd.Naveval);
+	wsp->rffac = sim->rfdata[thrd.irf];
+	wsp->zcoor = thrd.zvals[thrd.iz];
+	set_inhom_offsets(sim,wsp,thrd.zoffsetvals[thrd.iz]);
 
 	i=0;
 	while (1) {
 		// WARNING!!! This works ONLY IF all MPI slaves have the same number of threads!!!
 		icr = 1 + thread_id + glob_info.num_threads*glob_info.mpi_rank + glob_info.mpi_size*glob_info.num_threads*i;
-		if (icr > ncr) break;
+		if (icr > thrd.ncr) break;
 		wsp->cryst = sim->crdata[icr];
 		wsp->cryst_idx = icr;
-		sim_calcfid(sim, wsp);
+		sim_calcfid_interpol(sim, wsp);
 		if (verbose & VERBOSE_PROGRESS) {
 			printf("Worker %i/%i: [cryst %d/%d] for interpolation\n",thread_id+1,glob_info.mpi_rank+1,icr,ncr);
 			fflush(stdout);
@@ -229,7 +203,7 @@ void thread_work_interpol_source(int thread_id, Tcl_Interp *interp) {
 		i++;
 	}
 
-	fclose(wsp->interpol_file);
+	//fclose(wsp->interpol_file);
 	thrd[thread_id].Nacq = wsp->Nacq;
 	thrd[thread_id].phase = wsp->acqphase;
 	wsp_destroy(sim, wsp);
@@ -593,50 +567,82 @@ void mpi_work_interpolate(Sim_info *sim)
 
 void mpi_work_ASGread(Sim_info *sim)
 {
-	int i, j, k, icr, npts, ncr, nnz = 0;
-	//TRIANGLE *tridata;
+	int i, j, k, l, icr, npts = 0, ncr, nnz = 0;
 	char buf[256];
 	FILE *fh;
 	long fpos, flen;
 
+	assert(sim->interpolation == 2);
+
 	sim->tridata = read_triangle_file(sim->crystfile);
 	ncr = LEN(sim->crdata);
+
 	if (sim->imethod == M_DIRECT_FREQ) {
-		npts = sim->points_per_cycle;
+		for (i=0; i<glob_info.mpi_size; i++) {
+			for (j=0; j<glob_info.num_threads; j++) {
+				sprintf(buf,"%s_P%d_T%d.bin",sim->parname,i,j);
+				fh = fopen(buf,"rb");
+				if (nnz == 0) {
+					fread(&nnz,sizeof(int),1,fh);
+					fread(&npts,sizeof(int),1,fh);
+					fread(&(sim->ASG_period),sizeof(double),1,fh);
+					sim->ASG_ampl = (complx*)malloc(nnz*npts*ncr*sim->ngamma*sizeof(complx));
+					sim->ASG_freq = (double*)malloc(nnz*ncr*sim->ngamma*sizeof(double));
+				}
+				fseek(fh,0,SEEK_END);
+				flen = ftell(fh);
+				fpos = 2*sizeof(int)+sizeof(double);
+				fseek(fh,fpos,SEEK_SET);
+				//printf("ASG reads file %s, nnz = %d\n",buf, nnz);
+				while (fpos < flen) {
+					fread(&icr,sizeof(int),1,fh);
+					//printf("icr = %d, fpos = %ld\n",icr,fpos);
+					for (k=0; k<nnz*sim->ngamma; k++) {
+						fread(sim->ASG_freq+k+nnz*sim->ngamma*(icr-1),sizeof(double),1,fh);
+						fread(sim->ASG_ampl+k*npts+(icr-1)*npts*nnz*sim->ngamma,sizeof(complx),npts,fh);
+					}
+					fpos = ftell(fh);
+				}
+				fclose(fh);
+			}
+		}
+		sim->ASG_nnz = nnz;
+		// END of DIRECT freq option
 	} else if (sim->imethod == M_GCOMPUTE_FREQ) {
 		npts = sim->ngamma;
+		for (i=0; i<glob_info.mpi_size; i++) {
+			for (j=0; j<glob_info.num_threads; j++) {
+				sprintf(buf,"%s_P%d_T%d.bin",sim->parname,i,j);
+				fh = fopen(buf,"rb");
+				if (nnz == 0) {
+					fread(&nnz,sizeof(int),1,fh);
+					sim->ASG_ampl = (complx*)malloc(nnz*npts*ncr*sizeof(complx));
+					sim->ASG_freq = (double*)malloc(nnz*ncr*sizeof(double));
+				}
+				fseek(fh,0,SEEK_END);
+				flen = ftell(fh);
+				fpos = sizeof(int);
+				fseek(fh,fpos,SEEK_SET);
+				//printf("ASG reads file %s, nnz = %d\n",buf, nnz);
+				while (fpos < flen) {
+					fread(&icr,sizeof(int),1,fh);
+					//printf("icr = %d, fpos = %ld\n",icr,fpos);
+					for (k=0; k<nnz; k++) {
+						fread(sim->ASG_freq+k+nnz*(icr-1),sizeof(double),1,fh);
+						fread(sim->ASG_ampl+k*npts+(icr-1)*npts*nnz,sizeof(complx),npts,fh);
+					}
+					fpos = ftell(fh);
+				}
+				fclose(fh);
+			}
+		}
+		sim->ASG_nnz = nnz;
+		// END of gCOMPUTE freq option
 	} else {
 		fprintf(stderr,"Error: ASGread - wrong imethod\n");
 		exit(1);
 	}
 
-	for (i=0; i<glob_info.mpi_size; i++) {
-		for (j=0; j<glob_info.num_threads; j++) {
-			sprintf(buf,"%s_P%d_T%d.bin",sim->parname,i,j);
-			fh = fopen(buf,"rb");
-			if (nnz == 0) {
-				fread(&nnz,sizeof(int),1,fh);
-				sim->ASG_ampl = (complx*)malloc(nnz*npts*ncr*sizeof(complx));
-				sim->ASG_freq = (double*)malloc(nnz*ncr*sizeof(double));
-			}
-			fseek(fh,0,SEEK_END);
-			flen = ftell(fh);
-			fpos = sizeof(int);
-			fseek(fh,fpos,SEEK_SET);
-			//printf("ASG reads file %s, nnz = %d\n",buf, nnz);
-			while (fpos < flen) {
-				fread(&icr,sizeof(int),1,fh);
-				//printf("icr = %d, fpos = %ld\n",icr,fpos);
-				for (k=0; k<nnz; k++) {
-					fread(sim->ASG_freq+k+nnz*(icr-1),sizeof(double),1,fh);
-					fread(sim->ASG_ampl+k*npts+(icr-1)*npts*nnz,sizeof(complx),npts,fh);
-				}
-				fpos = ftell(fh);
-			}
-			fclose(fh);
-		}
-	}
-	sim->ASG_nnz = nnz;
 	//printf("ASG data read into memory\n");
 }
 
@@ -821,6 +827,8 @@ void thread_work_ASG_interpol(int thread_id)
 	nnz = sim->ASG_nnz;
 	if (sim->imethod == M_DIRECT_FREQ) {
 		npts = sim->points_per_cycle;
+		fprintf(stderr,"Error: ASG thread work - imethod M_DIRECT_FREQ not correctly implemented\n");
+		exit(1);
 	} else if (sim->imethod == M_GCOMPUTE_FREQ) {
 		npts = sim->ngamma;
 	} else {
@@ -910,6 +918,7 @@ void thread_work_ASG_interpol(int thread_id)
 					while (bin < 1) bin += sim->np;
 					while (bin > sim->np) bin -= sim->np;
 					//printf("uphill first contrib bin %d (%g, %g)\n",bin,area.re,area.im);
+					bin = sim->np - bin + 1;
 					fid[bin].re += area.re - prev.re;
 					fid[bin].im += area.im - prev.im;
 					ia++;
@@ -920,6 +929,7 @@ void thread_work_ASG_interpol(int thread_id)
 				while (bin < 1) bin += sim->np;
 				while (bin > sim->np) bin -= sim->np;
 				//printf("uphill last contrib bin %d \n",bin);
+				bin = sim->np - bin + 1;
 				fid[bin].re += height.re*(fb-fa)/2.0 - prev.re;
 				fid[bin].im += height.im*(fb-fa)/2.0 - prev.im;
 				// downhill but from the other side, so it is also uphill...
@@ -931,6 +941,7 @@ void thread_work_ASG_interpol(int thread_id)
 					while (bin < 1) bin += sim->np;
 					while (bin > sim->np) bin -= sim->np;
 					//printf("downhill first contrib bin %d (%g, %g)\n",bin,area.re,area.im);
+					bin = sim->np - bin + 1;
 					fid[bin].re += area.re - prev.re;
 					fid[bin].im += area.im - prev.im;
 					ic--;
@@ -941,6 +952,7 @@ void thread_work_ASG_interpol(int thread_id)
 				while (bin < 1) bin += sim->np;
 				while (bin > sim->np) bin -= sim->np;
 				//printf("downhill last contrib bin %d \n",bin);
+				bin = sim->np - bin + 1;
 				fid[bin].re += height.re*(fc-fb)/2.0 - prev.re;
 				fid[bin].im += height.im*(fc-fb)/2.0 - prev.im;
 			}
@@ -988,7 +1000,7 @@ void simpson_thread_slave(void *thr_id)
 		}
 		if (glob_info.cont_thread < 3) {
 			/* set state of the Tcl interpreter */
-			if (Tcl_Eval(interp, thrd[thread_id].state) != TCL_OK) {
+			if (Tcl_Eval(interp, thrd.state) != TCL_OK) {
 				fprintf(stderr,"Error: can not set slave interpreter state for process %d, thread %d:\n%s\n",glob_info.mpi_rank,thread_id,Tcl_GetStringResult(interp));
 				exit(1);
 			}
@@ -1051,31 +1063,30 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 	nz = LEN(zvals);
 	Ntot = ncr*nrf*nz*Naveval; /* Total number of jobs */
 	num_threads = glob_info.num_threads;
-	thrd = (thread_data *) malloc(sizeof(thread_data) * num_threads);
+
+	thrd.fids = (complx**)malloc(num_threads*sizeof(complx*));
+	if (thrd.fids == NULL) {
+		fprintf(stderr,"Error: ups, not even started and already out of memory...\n");
+		exit(1);
+	}
 
 	switch (sim->interpolation) {
 	case 0: // no interpolation
 		/* prepare input data for threads */
-		for (i=0; i<num_threads; i++){
-			thrd[i].Ntot = Ntot;
-			thrd[i].ncr = ncr;
-			thrd[i].nrf = nrf;
-			thrd[i].nz = nz;
-			thrd[i].Nacq = 0;
-			thrd[i].phase = 0;
-			thrd[i].zvals = zvals;
-			thrd[i].zoffsetvals = zoffsetvals;
-			thrd[i].state = state;
-			thrd[i].Navepar = Navepar;
-			thrd[i].Naveval = Naveval;
-			thrd[i].ave_struct = avestruct;
-			thrd[i].ave_weight = aveweight;
-			if (Navepar > 0 && i > 0) {
-				thrd[i].sim = sim_duplicate(sim);
-			} else {
-				thrd[i].sim = sim;
-			}
-		}
+		thrd.Ntot = Ntot;
+		thrd.ncr = ncr;
+		thrd.nrf = nrf;
+		thrd.nz = nz;
+		thrd.Nacq = 0;
+		thrd.phase = 0;
+		thrd.zvals = zvals;
+		thrd.zoffsetvals = zoffsetvals;
+		thrd.state = state;
+		thrd.Navepar = Navepar;
+		thrd.Naveval = Naveval;
+		thrd.ave_struct = avestruct;
+		thrd.ave_weight = aveweight;
+		thrd.sim = sim;
 		/* start calculation in threads */
 		glob_info.cont_thread = 1;
 		pthread_barrier_wait(&simpson_b_start);
@@ -1083,16 +1094,9 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 		pthread_barrier_wait(&simpson_b_end);
 		fidsum = complx_vector(sim->ntot);
 		cv_zero(fidsum);
-		for(i=0; i<num_threads; i++){
-			cv_multod(fidsum, thrd[i].fid, 1.0);
-			free_complx_vector(thrd[i].fid);
-		}
-		/* little clean up */
-		if (Navepar > 0) {
-			for (i=1; i<num_threads; i++) {
-				sim_destroy(thrd[i].sim,1);
-				free(thrd[i].sim);
-			}
+		for(i=0; i<num_threads; i++) {
+			cv_multod(fidsum, thrd.fids[i], 1.0);
+			free_complx_vector(thrd.fids[i]);
 		}
 		break;
 	case 1: { // FWTinterpolation
@@ -1100,56 +1104,36 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 		double weight;
 		fidsum = complx_vector(sim->ntot);
 		cv_zero(fidsum);
-		// initialize nfft library
-		//nfsft_precompute(sim->Jinterpol[1],1000.0,0U,0U);
 		// all averaging except powder needs to be serial
 		for (iz=1; iz<=nz; iz++) {
 			for (iave=0; iave<Naveval; iave++) {
 				for (irf=1; irf<=nrf; irf++) {
 					/* prepare input data for threads */
-					for (i=0; i<num_threads; i++){
-						thrd[i].Ntot = Ntot;
-						thrd[i].ncr = ncr;
-						thrd[i].nrf = irf;
-						thrd[i].nz = iz;
-						thrd[i].Nacq = 0;
-						thrd[i].phase = 0;
-						thrd[i].zvals = zvals;
-						thrd[i].zoffsetvals = zoffsetvals;
-						thrd[i].state = state;
-						thrd[i].Navepar = Navepar;
-						thrd[i].Naveval = iave;
-						thrd[i].ave_struct = avestruct;
-						thrd[i].ave_weight = aveweight;
-						if (Navepar > 0 && i > 0) {
-							thrd[i].sim = sim_duplicate(sim);
-						} else {
-							thrd[i].sim = sim;
-						}
-					}
+					thrd.Ntot = Ntot;
+					thrd.ncr = ncr;
+					thrd.nrf = irf;
+					thrd.nz = iz;
+					thrd.Nacq = 0;
+					thrd.phase = 0;
+					thrd.zvals = zvals;
+					thrd.zoffsetvals = zoffsetvals;
+					thrd.state = state;
+					thrd.Navepar = Navepar;
+					thrd.Naveval = iave;
+					thrd.ave_struct = avestruct;
+					thrd.ave_weight = aveweight;
+					thrd.sim = sim;
 					/* start calculation in threads */
 					glob_info.cont_thread = 2;
 					pthread_barrier_wait(&simpson_b_start);
 					/* wait for completion */
 					pthread_barrier_wait(&simpson_b_end);
-					/* little clean up */
-					if (Navepar > 0) {
-						for (i=1; i<num_threads; i++) {
-							sim_destroy(thrd[i].sim,1);
-							free(thrd[i].sim);
-						}
-					}
 #ifdef MPI
 					// wait somehow for all MPI slaves to finish, only then continue
 					MPI_Barrier(MPI_COMM_WORLD);
 #endif
 					// read data files and interpolate, use ONLY MPI workers
 					// NFFT library does not work properly on windows with threads
-					// for (i=0; i<num_threads; i++) thrd[i].sim = sim;
-					// glob_info.cont_thread = 3;
-					// pthread_barrier_wait(&simpson_b_start);
-					// wait for completion
-					// pthread_barrier_wait(&simpson_b_end);
 					mpi_work_interpolate(sim);
 #ifdef MPI
 					// wait somehow for all MPI slaves to finish, only then continue
@@ -1164,16 +1148,13 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 					printf("\nfids generated ... ");
 					weight = sim->rfdata[irf][sim->ss->nchan+1] * aveweight[iave];
 					for(i=0; i<num_threads; i++){
-						cv_multod(fidsum, thrd[i].fid, weight);
-						free_complx_vector(thrd[i].fid);
+						cv_multod(fidsum, thrd.fid[i], weight);
+						free_complx_vector(thrd.fid[i]);
 					}
 					printf("and collected.\n");
 					// repeat for averaging
 				}
 			}
-		}
-		if (sim->conjugate_fid) {
-			cv_conj(fidsum);
 		}
 		nfsft_forget(); // free NFFT pre-calculated globals
 		break; }
@@ -1271,6 +1252,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 	free_double_vector(zoffsetvals);
 	free_averaging_data(&avestruct,Navepar);
 	free(aveweight); aveweight = NULL;
+	free(thrd.fids);
 
 	return fidsum;
 }

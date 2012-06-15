@@ -26,13 +26,16 @@ void direct_acqblock_freq(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp 
 void direct_acqblock_time_FWT(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp *wsp);
 void gcompute_acqblock(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp *wsp);
 
-void new_gcompute(Sim_info *s, Sim_wsp *wsp);
-void new_gcompute_time(Sim_info *s, Sim_wsp *wsp);
-void new_gcompute_freq(Sim_info *s, Sim_wsp *wsp);
+//void new_gcompute(Sim_info *s, Sim_wsp *wsp);
+//void new_gcompute_time(Sim_info *s, Sim_wsp *wsp);
+//void new_gcompute_freq(Sim_info *s, Sim_wsp *wsp);
 void collect_fid_interpol(acq_data *acqdata);
 void collect_spc_interpol(acq_data *acqdata);
 void collect_fid_interpol_direct(acq_data *acqdata);
 void collect_spc_interpol_direct(acq_data *acqdata);
 
-
+void gcompute_fid(Sim_info *sim, Sim_wsp *wsp);
+void gcompute_spc(Sim_info *sim, Sim_wsp *wsp);
+void gcompute_ASGdata(Sim_info *sim, Sim_wsp *wsp);
+void gcompute_FWTdata(Sim_info *sim, Sim_wsp *wsp);
 #endif /* FIDCALC_H_ */

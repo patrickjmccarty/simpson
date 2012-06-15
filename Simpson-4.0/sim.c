@@ -1177,54 +1177,53 @@ void read_sim_pointers(Tcl_Interp* interp, Sim_info **sim, Sim_wsp **wsp)
 	//DEBUGPRINT("read_sim_pointers done (sim=%p, wsp=%p)\n",*sim,*wsp);
 }
 
+/****
+ * calculates pulse sequence response without any interpolations
+ */
 int sim_calcfid(Sim_info *s, Sim_wsp *wsp)
 {
   int ig;
 
-  DEBUGPRINT("sim_calcfid point 1\n");
   wsp->cryst.gamma += s->gamma_zero;
-  if (s->imethod == M_GCOMPUTE_TIME || s->imethod == M_GCOMPUTE_FREQ) {
-	  wsp->dt_gcompute = s->taur/(double)s->ngamma;
-  } else {
-	  wsp->dt_gcompute = 1e99;
-  }
-  DEBUGPRINT("sim_calcfid point 1A\n");
   ham_rotate(s,wsp);
-  DEBUGPRINT("sim_calcfid point 1B\n");
   cv_zero(wsp->fid);
 
-//  if (s->imethod == M_DIRECT_TIME || s->imethod == M_SPINACH || s->imethod == M_DIRECT_FREQ) {
-//      for (ig=1;ig<=s->ngamma;ig++) {
-//    	DEBUGPRINT("sim_calcfid -> direct method -> ig = %d\n",ig);
-//
-//        if (s->wr == 0.0) {
-//          wsp->tstart = 0.0;
-//        } else {
-//	      wsp->tstart = (ig-1)/(double)s->ngamma*2.0e6*M_PI/s->wr;
-//        }
-//       //wsp->cryst.gamma += 360*(ig-1)/(double)s->ngamma;
-//        direct_propagate(s,wsp);
-//        wsp->cryst.gamma += 360.0/(double)s->ngamma;
-//      }
-//      cv_muld(wsp->fid, 1.0/(double)(s->ngamma));
-//  } else if (s->imethod == M_GCOMPUTE_TIME || s->imethod == M_GCOMPUTE_FREQ) {
-//      /* ZT: disable these when relaxation is invoked */
-//      if ( s->relax ) {
-//         fprintf(stderr,"error: methods gcompute and igcompute not allowed with relaxation\n");
-//         exit(1);
-//      }
-//      new_gcompute(s,wsp);
-//  } else {
-//	  fprintf(stderr,"Error: sim_calcfid - imethod not recognized\n");
-//	  exit(1);
-//  }
-
   switch (s->imethod) {
+  case M_GCOMPUTE_TIME:
+      if ( s->relax ) {
+         fprintf(stderr,"error: methods gcompute and igcompute not allowed with relaxation\n");
+         exit(1);
+      }
+	  wsp->dt_gcompute = s->taur/(double)s->ngamma;
+      gcompute_fid(s,wsp);
+      if (s->conjugate_fid) cv_conj(wsp->fid);
+	  break;
+  case M_GCOMPUTE_FREQ:
+      if ( s->relax ) {
+         fprintf(stderr,"error: methods gcompute and igcompute not allowed with relaxation\n");
+         exit(1);
+      }
+	  wsp->dt_gcompute = s->taur/(double)s->ngamma;
+      gcompute_spc(s,wsp);
+	  break;
   case M_DIRECT_TIME:
-  case M_DIRECT_FREQ:
-  case M_SPINACH:
+	  wsp->dt_gcompute = 1e99;
       for (ig=0;ig<s->ngamma;ig++) {
-    	DEBUGPRINT("sim_calcfid -> direct method -> ig = %d\n",ig+1);
+        if (s->wr == 0.0) {
+          wsp->tstart = 0.0;
+        } else {
+	      wsp->tstart = ig/(double)s->ngamma*2.0e6*M_PI/s->wr;
+        }
+        wsp->ig = ig;
+        direct_propagate(s,wsp);
+        wsp->cryst.gamma += 360.0/(double)s->ngamma;
+      }
+      cv_muld(wsp->fid, 1.0/(double)(s->ngamma));
+      if (s->conjugate_fid) cv_conj(wsp->fid);
+      break;
+  case M_DIRECT_FREQ:
+	  wsp->dt_gcompute = 1e99;
+      for (ig=0;ig<s->ngamma;ig++) {
         if (s->wr == 0.0) {
           wsp->tstart = 0.0;
         } else {
@@ -1236,30 +1235,93 @@ int sim_calcfid(Sim_info *s, Sim_wsp *wsp)
       }
       cv_muld(wsp->fid, 1.0/(double)(s->ngamma));
       break;
-  case M_GCOMPUTE_TIME:
-      if ( s->relax ) {
-         fprintf(stderr,"error: methods gcompute and igcompute not allowed with relaxation\n");
-         exit(1);
+  case M_SPINACH:
+	  wsp->dt_gcompute = 1e99;
+      for (ig=0;ig<s->ngamma;ig++) {
+        if (s->wr == 0.0) {
+          wsp->tstart = 0.0;
+        } else {
+	      wsp->tstart = ig/(double)s->ngamma*2.0e6*M_PI/s->wr;
+        }
+        wsp->ig = ig;
+        direct_propagate(s,wsp);
+        wsp->cryst.gamma += 360.0/(double)s->ngamma;
       }
-      //new_gcompute(s,wsp);
-      new_gcompute_time(s,wsp);
-	  break;
-  case M_GCOMPUTE_FREQ:
-      if ( s->relax ) {
-         fprintf(stderr,"error: methods gcompute and igcompute not allowed with relaxation\n");
-         exit(1);
-      }
-      new_gcompute_freq(s,wsp);
-	  break;
+      cv_muld(wsp->fid, 1.0/(double)(s->ngamma));
+      if (s->conjugate_fid) cv_conj(wsp->fid);
+      break;
   default:
 	  fprintf(stderr,"Error: sim_calcfid - imethod (%d) not recognized\n",s->imethod);
 	  exit(1);
   }
 
-  if (s->conjugate_fid) {
-    cv_conj(wsp->fid);
-  }
   return 0;
 }
 
+/****
+ * calculates pulse sequence response data for interpolations
+ */
+int sim_calcfid_interpol(Sim_info *s, Sim_wsp *wsp)
+{
+  int ig;
+  if ( s->relax ) {
+     fprintf(stderr,"Error: relaxation not compatible with interpolation\n");
+     exit(1);
+  }
+
+  wsp->cryst.gamma += s->gamma_zero;
+  ham_rotate(s,wsp);
+
+  switch (s->imethod) {
+  case M_GCOMPUTE_TIME:
+      if (sim->interpolation != 1) {
+    	  fprintf(stderr,"Error: incompatible interpolation method for time domain. Use FWT.\n");
+    	  exit(1);
+      }
+	  wsp->dt_gcompute = s->taur/(double)s->ngamma;
+      gcompute_FWTdata(s,wsp);
+	  break;
+  case M_GCOMPUTE_FREQ:
+	  wsp->dt_gcompute = s->taur/(double)s->ngamma;
+      if (sim->interpolation == 1) {
+    	  gcompute_FWTdata(s,wsp);
+      } else if (sim->interpolation == 2) {
+    	  gcompute_ASGdata(s,wsp);
+      } else {
+    	  fprintf(stderr,"Error: incompatible interpolation method for frequency domain. Try FWT or ASG.\n");
+    	  exit(1);
+      }
+	  break;
+  case M_DIRECT_TIME:
+	  if (sim->interpolation != 1) {
+		  fprintf(stderr,"Error: incompatible interpolation method for time domain. Use FWT.\n");
+		  exit(1);
+	  }
+	  wsp->dt_gcompute = 1e99;
+	  fprintf(stderr,"\n\n...NOTHING DONE HERE!!!...\n\n");
+      break;
+  case M_DIRECT_FREQ:
+	  wsp->dt_gcompute = 1e99;
+	  if (sim->interpolation == 1) {
+		  // needs to be done
+		  fprintf(stderr,"\n\n...NOTHING DONE HERE!!!...\n\n");
+	  } else if (sim->interpolation == 2) {
+		  // needs to be done
+		  fprintf(stderr,"\n\n...NOTHING DONE HERE!!!...\n\n");
+	  } else {
+		  fprintf(stderr,"Error: incompatible interpolation method for frequency domain. Try FWT or ASG.\n");
+		  exit(1);
+	  }
+      break;
+  case M_SPINACH:
+	  fprintf(stderr,"Error: the method is not compatible with interpolations\n");
+	  exit(1);
+      break;
+  default:
+	  fprintf(stderr,"Error: sim_calcfid_interpol - imethod (%d) not recognized\n",s->imethod);
+	  exit(1);
+  }
+
+  return 0;
+}
 

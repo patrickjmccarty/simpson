@@ -107,9 +107,9 @@ typedef struct _Sim_info {
   double **rfdata;
   int Jinterpol[2];
   TRIANGLE *tridata;
-  double *ASG_freq;
-  complx *ASG_ampl;
-  int ASG_nnz;
+  double *ASG_freq, ASG_period;
+  complx *ASG_ampl, *FWT_lam, *FWT_frs;
+  int FWTASG_nnz;
 } Sim_info;
 
 #define MAXSTO 1000
@@ -174,6 +174,7 @@ Sim_wsp * wsp_initialize(Sim_info * sim);
 void sim_destroy(Sim_info* sim, int this_is_copy);
 void wsp_destroy(Sim_info* sim, Sim_wsp * wsp);
 int sim_calcfid(Sim_info* sim,Sim_wsp * wsp);
+int sim_calcfid_interpol(Sim_info *s, Sim_wsp *wsp);
 void store_sim_pointers(Tcl_Interp* interp, Sim_info* sim, Sim_wsp * wsp);
 void read_sim_pointers(Tcl_Interp* interp, Sim_info **sim, Sim_wsp **wsp);
 

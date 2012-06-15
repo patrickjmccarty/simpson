@@ -32,8 +32,8 @@
 #include "auxmath.h"
 
 	/* for acurate timings on windows */
-#include <windows.h>
-#include <winbase.h>
+//#define TIMING
+#include "timing.h"
 
 /* vector operations */
 void dv_muld(double *vec, double d)
@@ -3997,10 +3997,12 @@ void cm_diag(mat_complx *m, complx *eigs, mat_complx *T)
 	int info=0;
 	complx *wsp = (complx*)malloc(lwsp*sizeof(complx));
 	double *rwork = (double*)malloc(lwsp*sizeof(double));
-	//LARGE_INTEGER tv1, tv2, tickpsec;
 
-	//QueryPerformanceFrequency(&tickpsec);
-	//QueryPerformanceCounter(&tv1);
+	TIMING_INIT;
+	TIMING_INIT_VAR(tv1);
+	TIMING_INIT_VAR(tv2);
+	TIMING_TIC(tv1);
+
 	if (m->type == MAT_SPARSE) {
 		printf("WARNING!!! In order to diagonalize the matrix (dim = %d) I need to \n"
 			   "convert it from sparse to full format. The whole operation may take long time...\n",dim);
@@ -4029,8 +4031,8 @@ void cm_diag(mat_complx *m, complx *eigs, mat_complx *T)
 	free_complx_matrix(dum);
 	free(wsp);
 	free(rwork);
-	//QueryPerformanceCounter(&tv2);
-	//printf("\t\tcm_diag time: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+
+	TIMING_TOC(tv1,tv2,"cm_diag");
 }
 
 double cm_sumnorm1(mat_complx *m)
@@ -5052,9 +5054,10 @@ void prop_real(mat_complx *prop, mat_double *ham, double dt, int method)
 
 	DEBUGPRINT("prop_real point 1\n");
 
-	LARGE_INTEGER tv1, tv2, tickpsec, tv3, tv4;
-	QueryPerformanceFrequency(&tickpsec);
-	QueryPerformanceCounter(&tv1);
+	TIMING_INIT;
+	TIMING_INIT_VAR(tv1);
+	TIMING_INIT_VAR(tv2);
+	TIMING_TIC(tv1);
 
 	assert(dim == ham->col && dim == prop->row && dim == prop->col);
 	assert(prop->basis == ham->basis);
@@ -5298,8 +5301,7 @@ void prop_real(mat_complx *prop, mat_double *ham, double dt, int method)
 			exit(1);
 		}
 	//cm_print(prop,"PROPAGATOR");
-	QueryPerformanceCounter(&tv2);
-	//printf("\ttiming prop_real time: %.9f\n",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+	TIMING_TOC(tv1,tv2,"prop_real");
 }
 
 /****

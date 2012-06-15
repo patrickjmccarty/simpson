@@ -46,8 +46,8 @@
 #include "spinach.h"
 #include "fidcalc.h"
 	/* for acurate timings on windows */
-#include <windows.h>
-#include <winbase.h>
+//#define TIMING
+#include "timing.h"
 
 /*
   tpropstart_usec : the time when the propagator was reset last time
@@ -1277,6 +1277,11 @@ int tclPulse(ClientData data,Tcl_Interp* interp,int argc, Tcl_Obj *argv[])
   Sim_info *sim = NULL;
   Sim_wsp *wsp = NULL;
 
+  TIMING_INIT;
+  TIMING_INIT_VAR(tv1);
+  TIMING_INIT_VAR(tv2);
+  TIMING_TIC(tv1);
+
   read_sim_pointers(interp, &sim, &wsp);
 
   if (argc < 2 || ((argc % 2) != 0))
@@ -1311,7 +1316,7 @@ int tclPulse(ClientData data,Tcl_Interp* interp,int argc, Tcl_Obj *argv[])
 
   if (duration < 0.0)
       return TclError(interp,"pulse: duration must be zero or positive");
-  DEBUGPRINT("...pulse duration = %g\n",duration);
+  DEBUGPRINT("...pulse duration = %g, maxdt = %g\n",duration,wsp->dtmax);
 
   if (wsp->evalmode == EM_MEASURE) {
 	  wsp->t += duration;
@@ -1341,6 +1346,7 @@ int tclPulse(ClientData data,Tcl_Interp* interp,int argc, Tcl_Obj *argv[])
      _reset_prop(sim,wsp);
   }
 
+  TIMING_TOC(tv1,tv2,"tcl pulse");
   return TCL_OK;
 }
 
@@ -2389,13 +2395,13 @@ int tclTestFunc(ClientData data,Tcl_Interp* interp,int objc, Tcl_Obj *objv[])
 	Sim_info *sim = NULL;
 	Sim_wsp *wsp = NULL;
 	int i, j, n, nnz;
-	LARGE_INTEGER tv1, tv2, tickpsec;
+	//LARGE_INTEGER tv1, tv2, tickpsec;
 	extern void prop_pade_real(mat_complx *prop, mat_double *ham,double dt);
 	extern void prop_cheby_real(mat_complx *prop, mat_double *ham,double dt);
 	extern void prop_diag1_real(mat_complx *prop, mat_double *ham, double dt);
 	extern void prop_diag2_real(mat_complx *prop, mat_double *ham, double dt);
 	// Taylor pres prop_real(), method = 3
-	QueryPerformanceFrequency(&tickpsec);
+	//QueryPerformanceFrequency(&tickpsec);
 
 	//if (Tcl_GetIntFromObj(interp,objv[1],&n) != TCL_OK)
 	//     return TCL_ERROR;
@@ -2516,46 +2522,46 @@ int tclTestFunc(ClientData data,Tcl_Interp* interp,int objc, Tcl_Obj *objv[])
 		hh = dm_dup(ham);
 		dm_dense(hh);
 		cm_unit(prop);
-		QueryPerformanceCounter(&tv1);
+		//QueryPerformanceCounter(&tv1);
 		prop_diag1_real(prop,hh,1.0);
-		QueryPerformanceCounter(&tv2);
-		printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+		//QueryPerformanceCounter(&tv2);
+		//printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 		free_double_matrix(hh);
 
 		hh = dm_dup(ham);
 		dm_dense(hh);
 		cm_unit(prop);
-		QueryPerformanceCounter(&tv1);
+		//QueryPerformanceCounter(&tv1);
 		prop_diag2_real(prop,hh,1.0);
-		QueryPerformanceCounter(&tv2);
-		printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+		//QueryPerformanceCounter(&tv2);
+		//printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 		free_double_matrix(hh);
 
 		hh = dm_dup(ham);
 		dm_dense(hh);
 		cm_unit(prop);
-		QueryPerformanceCounter(&tv1);
+		//QueryPerformanceCounter(&tv1);
 		prop_pade_real(prop,hh,1.0);
-		QueryPerformanceCounter(&tv2);
-		printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+		//QueryPerformanceCounter(&tv2);
+		//printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 		free_double_matrix(hh);
 
 		hh = dm_dup(ham);
 		dm_dense(hh);
 		cm_unit(prop);
-		QueryPerformanceCounter(&tv1);
+		//QueryPerformanceCounter(&tv1);
 		prop_real(prop,hh,1.0,3);
-		QueryPerformanceCounter(&tv2);
-		printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+		//QueryPerformanceCounter(&tv2);
+		//printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 		free_double_matrix(hh);
 
 		hh = dm_dup(ham);
 		dm_dense(hh);
 		cm_unit(prop);
-		QueryPerformanceCounter(&tv1);
+		//QueryPerformanceCounter(&tv1);
 		prop_cheby_real(prop,hh,1.0);
-		QueryPerformanceCounter(&tv2);
-		printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+		//QueryPerformanceCounter(&tv2);
+		//printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 		free_double_matrix(hh);
 
 		if (nnz > floor(dim*dim*(1.0-SPARSITY)) ) {
@@ -2565,28 +2571,28 @@ int tclTestFunc(ClientData data,Tcl_Interp* interp,int objc, Tcl_Obj *objv[])
 		hh = dm_dup(ham);
 		dm_sparse(hh,TINY);
 		cm_unit(prop);
-		QueryPerformanceCounter(&tv1);
+		//QueryPerformanceCounter(&tv1);
 		prop_pade_real(prop,hh,1.0);
-		QueryPerformanceCounter(&tv2);
-		printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+		//QueryPerformanceCounter(&tv2);
+		//printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 		free_double_matrix(hh);
 
 		hh = dm_dup(ham);
 		dm_sparse(hh,TINY);
 		cm_unit(prop);
-		QueryPerformanceCounter(&tv1);
+		//QueryPerformanceCounter(&tv1);
 		prop_real(prop,hh,1.0,3);
-		QueryPerformanceCounter(&tv2);
-		printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+		//QueryPerformanceCounter(&tv2);
+		//printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 		free_double_matrix(hh);
 
 		hh = dm_dup(ham);
 		dm_sparse(hh,TINY);
 		cm_unit(prop);
-		QueryPerformanceCounter(&tv1);
+		//QueryPerformanceCounter(&tv1);
 		prop_cheby_real(prop,hh,1.0);
-		QueryPerformanceCounter(&tv2);
-		printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
+		//QueryPerformanceCounter(&tv2);
+		//printf("%.9f\t",((float)(tv2.QuadPart-tv1.QuadPart))/(float)tickpsec.QuadPart);
 		free_double_matrix(hh);
 
 		printf("\n");
