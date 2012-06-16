@@ -173,10 +173,12 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
 			  s->block_diag = 1;
 		  } else if (!strncmp(buf,"FWTinterpolation",9)) {
 			  s->interpolation = 1;
-		  } else if (!strncmp(buf,"ASGinterpolation",9)) {
+		  } else if (!strncmp(buf,"FWT2interpolation",10)) {
 			  s->interpolation = 2;
-		  } else if (!strncmp(buf,"FWTASGinterpolation",12)) {
+		  } else if (!strncmp(buf,"ASGinterpolation",9)) {
 			  s->interpolation = 3;
+		  } else if (!strncmp(buf,"FWTASGinterpolation",12)) {
+			  s->interpolation = 4;
 		  } else if (!strncmp(buf,"time",4)) {
 			  s->domain = 0;
 		  } else if (!strncmp(buf,"frequency",4)) {
@@ -285,9 +287,29 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
 	  }
   }
   //printf("\nsim_init test cryst_file: '%s' (%d, %d), '%s'\n",s->crystfile,s->crystfile_from,s->crystfile_to,s->targetcrystfile);
-  if (strlen(s->targetcrystfile) == 0 && (s->interpolation == 1 || s->interpolation == 3) ) {
-	  fprintf(stderr,"Error: cannot see target orientations set for interpolation.\nCheck par(cryst_file) definition.\n");
-	  exit(1);
+  s->crdata = read_crystfile(s->crystfile, s->crystfile_from, s->crystfile_to);
+  if (s->interpolation == 1 || s->interpolation == 2 || s->interpolation == 4) {
+	  if (strlen(s->targetcrdata) == 0) {
+		  fprintf(stderr,"Error: no target crystallite set defined for FWT interpolation.\n");
+		  exit(1);
+	  }
+	  s->targetcrdata = read_crystfile(s->targetcrystfile, s->crystfile_from, s->crystfile_to);
+	  // WARNING: this holds ONLY for LEBh sets!!!
+	  if (strncmp(s->targetcrystfile,"LEBh",4)) {
+		  fprintf(stderr,"Error: at the moment, only LEBhXXX source orientation sets are allowed!\n");
+		  exit(1);
+	  }
+	  s->Jinterpol[0] = ( (int)sqrt(6*(LEN(s->crdata)-1)) - 1) / 2;
+	  s->Jinterpol[1] = 2 << (int)(floor(log2((double)s->Jinterpol[0])));
+  } else {
+	  s->targetcrdata == NULL;
+  }
+  if (s->interpolation == 2) {
+	  // load, or create and load, map of nearest crystallites target->source
+  }
+  if (s->interpolation == 3 || s->interpolation == 4) {
+	  // test for triangle data
+	  // at the moment they are read in mpi_ASG_interpol ...
   }
 
   TclGetString(interp,detectop,"par","detect_operator",0,"Inp");
@@ -419,22 +441,16 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
   /* spinach interfers with conjugate_fid strangely */
   //if (s->imethod == M_SPINACH) s->conjugate_fid = !(s->conjugate_fid);
 
-  s->crdata = read_crystfile(s->crystfile, s->crystfile_from, s->crystfile_to);
   s->rfdata = read_rfproffile(s->rfproffile,s->ss->nchan);
-  if (s->interpolation == 1 || s->interpolation == 3) {
-	  s->targetcrdata = read_crystfile(s->targetcrystfile, s->crystfile_from, s->crystfile_to);
-	  // WARNING: this holds ONLY for LEBh sets!!!
-	  if (strncmp(s->targetcrystfile,"LEBh",4)) {
-		  fprintf(stderr,"Error: at the moment, only LEBhXXX source orientation sets are allowed!\n");
-		  exit(1);
-	  }
-	  s->Jinterpol[0] = ( (int)sqrt(6*(LEN(s->crdata)-1)) - 1) / 2;
-	  s->Jinterpol[1] = 2 << (int)(floor(log2((double)s->Jinterpol[0])));
-  }
 
   s->tridata = NULL;
   s->ASG_freq = NULL;
   s->ASG_ampl = NULL;
+  s->FWTASG_nnz = 0;
+  s->FWT_frs = NULL;
+  s->FWT_lam = NULL;
+  s->FWTASG_icol = NULL;
+  s->FWTASG_irow = NULL;
 
   return s;
 }
@@ -527,12 +543,40 @@ void sim_destroy(Sim_info* s, int this_is_copy)
   if (!this_is_copy) {
 	  rfprof_free(s->rfdata);
 	  cryst_free(s->crdata);
-	  if (s->interpolation == 1) cryst_free(s->targetcrdata);
+	  if (s->targetcrdata != NULL) {
+		  cryst_free(s->targetcrdata);
+		  s->targetcrdata = NULL;
+	  }
   }
 
-  if (s->tridata != NULL) triangle_free(s->tridata);
-  if (s->ASG_ampl != NULL) free(s->ASG_ampl);
-  if (s->ASG_freq != NULL) free(s->ASG_freq);
+  if (s->tridata != NULL) {
+	  triangle_free(s->tridata);
+	  s->tridata = NULL;
+  }
+  if (s->ASG_ampl != NULL) {
+	  free(s->ASG_ampl);
+	  s->ASG_ampl == NULL;
+  }
+  if (s->ASG_freq != NULL) {
+	  free(s->ASG_freq);
+	  s->ASG_freq = NULL;
+  }
+  if (s->FWT_lam != NULL) {
+	  free(s->FWT_lam);
+	  s->FWT_lam = NULL;
+  }
+  if (s->FWT_frs != NULL) {
+	  free(s->FWT_frs);
+	  s->FWT_frs = NULL;
+  }
+  if (s->FWTASG_irow != NULL) {
+	  free(s->FWTASG_irow);
+	  s->FWTASG_irow = NULL;
+  }
+  if (s->FWTASG_icol != NULL) {
+	  free(s->FWTASG_icol);
+	  s->FWTASG_icol = NULL;
+  }
 
 }
 
@@ -1261,39 +1305,39 @@ int sim_calcfid(Sim_info *s, Sim_wsp *wsp)
 /****
  * calculates pulse sequence response data for interpolations
  */
-int sim_calcfid_interpol(Sim_info *s, Sim_wsp *wsp)
+int sim_calcfid_interpol(Sim_info *sim, Sim_wsp *wsp)
 {
   int ig;
-  if ( s->relax ) {
+  if ( sim->relax ) {
      fprintf(stderr,"Error: relaxation not compatible with interpolation\n");
      exit(1);
   }
 
-  wsp->cryst.gamma += s->gamma_zero;
+  wsp->cryst.gamma += sim->gamma_zero;
   ham_rotate(s,wsp);
 
-  switch (s->imethod) {
+  switch (sim->imethod) {
   case M_GCOMPUTE_TIME:
-      if (sim->interpolation != 1) {
+      if ( !(sim->interpolation == 1 || sim->interpolation == 2) ) {
     	  fprintf(stderr,"Error: incompatible interpolation method for time domain. Use FWT.\n");
     	  exit(1);
       }
-	  wsp->dt_gcompute = s->taur/(double)s->ngamma;
-      gcompute_FWTdata(s,wsp);
+	  wsp->dt_gcompute = sim->taur/(double)sim->ngamma;
+      gcompute_FWTdata(sim,wsp);
 	  break;
   case M_GCOMPUTE_FREQ:
-	  wsp->dt_gcompute = s->taur/(double)s->ngamma;
-      if (sim->interpolation == 1) {
-    	  gcompute_FWTdata(s,wsp);
-      } else if (sim->interpolation == 2) {
-    	  gcompute_ASGdata(s,wsp);
+	  wsp->dt_gcompute = sim->taur/(double)sim->ngamma;
+      if (sim->interpolation == 1 || sim->interpolation == 2 || sim->interpolation == 4) {
+    	  gcompute_FWTdata(sim,wsp);
+      } else if (sim->interpolation == 3) {
+    	  gcompute_ASGdata(sim,wsp);
       } else {
     	  fprintf(stderr,"Error: incompatible interpolation method for frequency domain. Try FWT or ASG.\n");
     	  exit(1);
       }
 	  break;
   case M_DIRECT_TIME:
-	  if (sim->interpolation != 1) {
+	  if ( !(sim->interpolation == 1 || sim->interpolation == 2) ) {
 		  fprintf(stderr,"Error: incompatible interpolation method for time domain. Use FWT.\n");
 		  exit(1);
 	  }
@@ -1302,10 +1346,10 @@ int sim_calcfid_interpol(Sim_info *s, Sim_wsp *wsp)
       break;
   case M_DIRECT_FREQ:
 	  wsp->dt_gcompute = 1e99;
-	  if (sim->interpolation == 1) {
+	  if (sim->interpolation == 1 || sim->interpolation == 2 || sim->interpolation == 4) {
 		  // needs to be done
 		  fprintf(stderr,"\n\n...NOTHING DONE HERE!!!...\n\n");
-	  } else if (sim->interpolation == 2) {
+	  } else if (sim->interpolation == 3) {
 		  // needs to be done
 		  fprintf(stderr,"\n\n...NOTHING DONE HERE!!!...\n\n");
 	  } else {
@@ -1318,7 +1362,7 @@ int sim_calcfid_interpol(Sim_info *s, Sim_wsp *wsp)
 	  exit(1);
       break;
   default:
-	  fprintf(stderr,"Error: sim_calcfid_interpol - imethod (%d) not recognized\n",s->imethod);
+	  fprintf(stderr,"Error: sim_calcfid_interpol - imethod (%d) not recognized\n",sim->imethod);
 	  exit(1);
   }
 

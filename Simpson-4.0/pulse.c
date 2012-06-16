@@ -2364,7 +2364,7 @@ int tclAcqBlock(ClientData data,Tcl_Interp* interp,int objc, Tcl_Obj *objv[])
 
 	switch (sim->imethod) {
 	case M_DIRECT_TIME:
-		if (sim->interpolation == 2) {
+		if (sim->interpolation == 1) {
 			direct_acqblock_time_FWT(interp,objv[objc-1],sim,wsp);
 		} else {
 			direct_acqblock(interp,objv[objc-1],sim,wsp);
