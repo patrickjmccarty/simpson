@@ -22,6 +22,7 @@ Cryst * cryst_alloc(int N);
 void cryst_free(Cryst * crdata);
 Cryst * read_crystfile(char* crystname, int from, int to);
 double cryst_sumweight(Cryst *crdata);
+int * read_cryst_map(char *crystfile, Cryst *crdata, char *targetcrystfile, Cryst *targetcrdata);
 
 TRIANGLE *triangle_alloc(int N);
 void triangle_free(TRIANGLE * triadata);

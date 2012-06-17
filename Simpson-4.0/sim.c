@@ -289,7 +289,7 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
   //printf("\nsim_init test cryst_file: '%s' (%d, %d), '%s'\n",s->crystfile,s->crystfile_from,s->crystfile_to,s->targetcrystfile);
   s->crdata = read_crystfile(s->crystfile, s->crystfile_from, s->crystfile_to);
   if (s->interpolation == 1 || s->interpolation == 2 || s->interpolation == 4) {
-	  if (strlen(s->targetcrdata) == 0) {
+	  if (strlen(s->targetcrystfile) == 0) {
 		  fprintf(stderr,"Error: no target crystallite set defined for FWT interpolation.\n");
 		  exit(1);
 	  }
@@ -306,6 +306,9 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
   }
   if (s->interpolation == 2) {
 	  // load, or create and load, map of nearest crystallites target->source
+	  s->crmap = read_cryst_map(s->crystfile, s->crdata, s->targetcrystfile, s->targetcrdata);
+  } else {
+	  s->crmap = NULL;
   }
   if (s->interpolation == 3 || s->interpolation == 4) {
 	  // test for triangle data
@@ -577,9 +580,13 @@ void sim_destroy(Sim_info* s, int this_is_copy)
 	  free(s->FWTASG_icol);
 	  s->FWTASG_icol = NULL;
   }
+  if (s->crmap != NULL) free(s->crmap);
 
 }
 
+/****
+ * decided NOT to use this anymore - NOT UPDATED!!!!
+ */
 Sim_info * sim_duplicate(Sim_info *sim)
 {
 	int i, j;
@@ -1314,7 +1321,7 @@ int sim_calcfid_interpol(Sim_info *sim, Sim_wsp *wsp)
   }
 
   wsp->cryst.gamma += sim->gamma_zero;
-  ham_rotate(s,wsp);
+  ham_rotate(sim,wsp);
 
   switch (sim->imethod) {
   case M_GCOMPUTE_TIME:

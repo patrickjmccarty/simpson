@@ -4055,6 +4055,204 @@ blk_mat_complx * blk_cm_diag(blk_mat_complx *Ud)
 	return T;
 }
 
+/*****
+ * sorts N complex numbers according to their phase. No change done on eigs,
+ * just coefficient map is filled.
+ */
+void eigsort(complx *eig, double *ph, int N, int *map)
+{
+	int i, j, k, l, ir, indxt, itemp, istack[64], jstack=0;
+	double a;
+
+	for (i=0; i<N; i++) {
+		map[i] = i;
+		ph[i] = Carg(eig[i]);
+		//printf("%d: %g\n",i,ph[i]);
+	}
+
+	l = 0;
+	ir = N-1;
+	for (;;) {
+		if (ir-l < 10) {
+			/* insertion sort when subarray small */
+			for (j=l+1; j<=ir; j++) {
+				indxt = map[j];
+				a = ph[indxt];
+				for (i=j-1; i>=l; i--) {
+					if (ph[map[i]] <= a) break;
+					map[i+1] = map[i];
+				}
+				map[i+1] = indxt;
+			}
+			if (jstack == 0) break;
+			ir = istack[jstack--];
+			l = istack[jstack--];
+		} else {
+			k = (l +ir) >> 1;
+			itemp = map[k]; map[k] = map[l+1]; map[l+1] = itemp;
+			if (ph[map[l]] > ph[map[ir]]) {
+				itemp = map[l]; map[l] = map[ir]; map[ir] = itemp;
+			}
+			if (ph[map[l+1]] > ph[map[ir]]) {
+				itemp = map[l+1]; map[l+1] = map[ir]; map[ir] = itemp;
+			}
+			if (ph[map[l]] > ph[map[l+1]]) {
+				itemp = map[l]; map[l] = map[l+1]; map[l+1] = itemp;
+			}
+			i = l+1;
+			j = ir;
+			indxt = map[l+1];
+			a = ph[indxt];
+			for (;;) {
+				do i++; while (ph[map[i]] < a);
+				do j--; while (ph[map[j]] > a);
+				if (j < i) break;
+				itemp = map[i]; map[i] = map[j]; map[j] = itemp;
+			}
+			map[l+1] = map[j];
+			map[j] = indxt;
+			jstack += 2;
+			if (jstack > 64) {
+				fprintf(stderr,"Error in eigsort: istack too small\n");
+				exit(1);
+			}
+			if (ir-i+1 >= j-l) {
+				istack[jstack] = ir;
+				istack[jstack-1] = i;
+				ir = j-1;
+			} else {
+				istack[jstack] = j-1;
+				istack[jstack-1] = l;
+				l = i;
+			}
+		}
+	}
+	//for (i=0; i<N; i++) {
+	//	printf("%d: %g\n",i,ph[map[i]]);
+	//}
+}
+
+/*****
+ *  diagonalize block matrix; on output Ud is replaced with its diagonal form
+ * and transformation block matrix is returned separately
+ * ADDITIONALLY, eigenvalues are sorted according to their phase
+ *              (does not check for unit eigenvalue amplitudes)
+ *****/
+blk_mat_complx * blk_cm_diag_sort(blk_mat_complx *Ud)
+{
+	blk_mat_complx *T;
+	mat_complx *bm, *tm;
+	int i, j, NN, lwsp = 0;
+
+	// determine maximal workspace needed for zgeev
+	for (i=0; i<Ud->Nblocks; i++) {
+		NN = Ud->blk_dims[i];
+		if (NN > lwsp) lwsp = NN;
+	}
+	int info=0;
+	complx *wsp = (complx*)malloc((lwsp*4+lwsp*lwsp)*sizeof(complx));
+	complx *eigs = wsp+3*lwsp;
+	complx *eigvecs = eigs+lwsp;
+	int *map = (int*)malloc(lwsp*sizeof(int));
+	lwsp *= 3;
+	double *rwork = (double*)malloc(lwsp*sizeof(double));
+	const int ione = 1;
+	if (!wsp || !map || !rwork) {
+		fprintf(stderr,"Error: blk_cm_diag_sort - out of memory\n");
+		exit(1);
+	}
+
+	mat_complx *dm = complx_matrix(Ud->dim,Ud->dim,MAT_DENSE_DIAG,0,Ud->basis);
+	complx *dmpos = dm->data;
+	T = (blk_mat_complx*)malloc(sizeof(blk_mat_complx));
+	T->Nblocks = Ud->Nblocks;
+	T->dim = Ud->dim;
+	T->basis = Ud->basis;
+	T->blk_dims = (int*)malloc(T->Nblocks*sizeof(int));
+	T->m = (mat_complx*)malloc(T->Nblocks*sizeof(mat_complx));
+	if (T->blk_dims == NULL || T->m == NULL) {
+		fprintf(stderr,"Error: blk_cm_diag can not allocate T->m/blk_dims\n");
+		exit(1);
+	}
+
+	for (i=0; i<Ud->Nblocks; i++) {
+		NN = T->blk_dims[i] = Ud->blk_dims[i];
+		bm = Ud->m + i;
+		tm = T->m + i;
+		if (NN == 1) {
+			*dmpos = bm->data[0];
+			create_sqmat_complx(tm,1,MAT_DENSE_DIAG,0,Ud->basis);
+			tm->data[0] = Cunit;
+		} else {
+			switch (bm->type) {
+			case MAT_DENSE:
+				create_sqmat_complx(tm,NN,MAT_DENSE,0,Ud->basis);
+				//zgeev_("N","V",&NN,bm->data,&NN,dmpos,NULL,&ione,tm->data,&NN,wsp,&lwsp,rwork,&info);
+				zgeev_("N","V",&NN,bm->data,&NN,eigs,NULL,&ione,eigvecs,&NN,wsp,&lwsp,rwork,&info);
+				if ( info != 0) {
+					fprintf(stderr,"blk_cm_diag error: diagonalization failed for submatrix %d with the code '%d'\n", i, info);
+				    exit(1);
+				}
+				eigsort(eigs,rwork,NN,map);
+				for (j=0; j<NN; j++) {
+					dmpos[j] = eigs[map[j]];
+					memcpy(tm->data+j*NN,eigvecs+map[j]*NN,NN*sizeof(complx));
+				}
+				break;
+			case MAT_DENSE_DIAG:
+				create_sqmat_complx(tm,NN,MAT_DENSE_DIAG,0,Ud->basis);
+				cm_unit(tm);
+				memcpy(dmpos,bm->data,NN*sizeof(complx));
+				break;
+			case MAT_SPARSE:
+				printf("WARNING!!! In order to diagonalize the submatrix %d (dim = %d) I need to \n"
+						"convert it from sparse to full format. The whole operation may take long time...\n",i,NN);
+				cm_dense(bm);
+				create_sqmat_complx(tm,NN,MAT_DENSE,0,Ud->basis);
+				//zgeev_("N","V",&NN,bm->data,&NN,dmpos,NULL,&ione,tm->data,&NN,wsp,&lwsp,rwork,&info);
+				zgeev_("N","V",&NN,bm->data,&NN,eigs,NULL,&ione,eigvecs,&NN,wsp,&lwsp,rwork,&info);
+				if ( info != 0) {
+					fprintf(stderr,"blk_cm_diag error: diagonalization failed for submatrix %d with the code '%d'\n", i, info);
+				    exit(1);
+				}
+				eigsort(eigs,rwork,NN,map);
+				for (j=0; j<NN; j++) {
+					dmpos[j] = eigs[map[j]];
+					memcpy(tm->data+j*NN,eigvecs+map[j]*NN,NN*sizeof(complx));
+				}
+				//free(bm->irow);
+				//free(bm->icol);
+				break;
+			case MAT_SPARSE_DIAG:
+				fprintf(stderr,"Error: blk_cm_diag - block %d of MAT_SPASE_DIAG not implemented\n",i);
+				exit(1);
+			default:
+				fprintf(stderr,"Error: blk_cm_diag - unknown submatrix %d type %d\n",i,bm->type);
+				exit(1);
+			}
+		}
+		dmpos += NN;
+
+		free(bm->data);
+	}
+
+	free(wsp);
+	free(rwork);
+	free(map);
+	free(Ud->m);
+	Ud->m = dm;
+	Ud->Nblocks = 1;
+	int *ddd = realloc(Ud->blk_dims,sizeof(int));
+	if (ddd == NULL) {
+		fprintf(stderr,"Error: blk_cm_diag - can not reallocate Ud->blk_dims\n");
+		exit(1);
+	}
+	Ud->blk_dims = ddd;
+	Ud->blk_dims[0] = Ud->dim;
+
+	return T;
+}
+
 blk_mat_complx * blk_cm_power(blk_mat_complx *obj, int n)
 {
 	int i, NN;

@@ -294,3 +294,61 @@ TRIANGLE * read_triangle_file(char* name)
   return tria;
 }
 
+int * read_cryst_map(char *crystfile, Cryst *crdata, char *targetcrystfile, Cryst *targetcrdata)
+{
+	FILE* fp;
+	char fname[256], line[32];
+	int ver, i, j, ncr, ntcr, k, l;
+	int *crmap;
+	double d, dmin;
+
+	ver = verbose & VERBOSE_POWDER;
+	ncr = LEN(crdata);
+	ntcr = LEN(targetcrdata);
+	crmap = (int *)malloc(ntcr*sizeof(int));
+	if (crmap == NULL) {
+		fprintf(stderr,"Error: can not allocate crmap\n");
+		exit(1);
+	}
+	sprintf(fname,"%s_%s.map",targetcrystfile,crystfile);
+    fp = fopen(fname,"r");
+
+	if (fp != NULL) { // load from file if the data file exist
+		if (ver) printf("Reading crystallites NEAREST map from file %s\n",fname);
+		for (i=0; i<ntcr; i++) {
+		    if (!fgets(line, 32, fp) ) {
+			   fprintf(stderr,"Error: unable to read line %d in file %s\n",i,fname);
+			   exit(1);
+			}
+		    j = sscanf(line,"%d%d",&k,&l);
+			if ( j != 2 ) {
+				fprintf(stderr,"Error: can not read 2 integers on line %d in file %s\n",i,fname);
+				exit(1);
+			}
+			crmap[k-1] = l;
+		    if (ver) printf("%5d %5d\n", k, l);
+		}
+	} else { // create map de novo and store it to file
+		if (ver) printf("Creating crystallites NEAREST map and saving to file %s\n",fname);
+		fp = fopen(fname,"w");
+		for (i=1; i<=ntcr; i++) {
+			dmin = 1e99;
+			for (j=1; j<=ncr; j++) {
+				d = fabs(crdata[j].alpha - targetcrdata[i].alpha) + fabs(crdata[j].beta - targetcrdata[i].beta) + fabs(crdata[j].gamma - targetcrdata[i].gamma);
+				if (d < dmin) {
+					dmin = d;
+					l = j;
+				}
+			}
+			if (dmin>1e90) {
+				fprintf(stderr,"Error: read_cryst_map - ups, can not find nearest for %d\n",i);
+				exit(1);
+			}
+			crmap[i-1] = l;
+			fprintf(fp,"%d %d\n",i,l);
+		    if (ver) printf("%5d %5d\n", i, l);
+		}
+		fclose(fp);
+	}
+	return crmap;
+}

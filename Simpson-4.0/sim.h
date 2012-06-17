@@ -105,11 +105,11 @@ typedef struct _Sim_info {
   blk_mat_double *Hiso, *HQ[5];
   Cryst *crdata, *targetcrdata;
   double **rfdata;
-  int Jinterpol[2];
+  int Jinterpol[2], *crmap;
   TRIANGLE *tridata;
   double *ASG_freq, ASG_period;
   complx *ASG_ampl, *FWT_lam, *FWT_frs;
-  int FWTASG_nnz, FWTASG_irow, FWTASG_icol, icr_done;
+  int FWTASG_nnz, *FWTASG_irow, *FWTASG_icol, icr_done;
 } Sim_info;
 
 #define MAXSTO 1000

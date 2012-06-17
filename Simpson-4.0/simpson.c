@@ -181,8 +181,9 @@ void thread_work_interpol_source(int thread_id, Tcl_Interp *interp) {
 	wsp->zcoor = thrd.zvals[thrd.nz];
 	set_inhom_offsets(sim,wsp,thrd.zoffsetvals[thrd.nz]);
 
-	i=0;
+	i = -1;
 	while (1) {
+		i++;
 		// WARNING!!! This works ONLY IF all MPI slaves have the same number of threads!!!
 		icr = 1 + thread_id + glob_info.num_threads*glob_info.mpi_rank + glob_info.mpi_size*glob_info.num_threads*i;
 		if (icr > thrd.ncr) break;
@@ -191,10 +192,9 @@ void thread_work_interpol_source(int thread_id, Tcl_Interp *interp) {
 		wsp->cryst_idx = icr;
 		sim_calcfid_interpol(sim, wsp);
 		if (verbose & VERBOSE_PROGRESS) {
-			printf("Worker %i/%i: [cryst %d/%d] for interpolation\n",thread_id+1,glob_info.mpi_rank+1,icr,ncr);
+			printf("Worker %i/%i: [cryst %d/%d] for interpolation\n",thread_id+1,glob_info.mpi_rank+1,icr,thrd.ncr);
 			fflush(stdout);
 		}
-		i++;
 	}
 
 	wsp_destroy(sim, wsp);
@@ -403,11 +403,11 @@ void mpi_work_interpolate(Sim_info *sim)
 /******
  * FWT interpolation of data stored in memory (option to interpolate only lams)
  */
-master_FWTinterpolate(Sim_info *sim)
+void master_FWTinterpolate(Sim_info *sim)
 {
 	int ncr = LEN(sim->crdata);
 	int ntcr = LEN(sim->targetcrdata);
-	int i;
+	int i, j, k, icr;
 	double d;
 	complx *zz;
 	nfsft_plan sourceplan, targetplan;
@@ -441,9 +441,8 @@ master_FWTinterpolate(Sim_info *sim)
 	nfsft_precompute_x(&targetplan); // Do pre-computation for nodes
 	//printf("The same done for targetplan, N_total = %d, M_total = %d\n",targetplan.N_total, targetplan.M_total);
 
-
 	// interpolate lams
-	complx *new_lam = (complx*)malloc(sim->matdim*ntcr);
+	complx *new_lam = (complx*)malloc(sim->matdim*ntcr*sizeof(complx));
 	if (new_lam == NULL) {
 		fprintf(stderr,"Error: no more memory for new lam vector (FWT)\n");
 		exit(1);
@@ -453,12 +452,16 @@ master_FWTinterpolate(Sim_info *sim)
 		for (icr=1; icr<=ncr; icr++) {
 			sourceplan.f[icr-1][0] = sim->crdata[icr].weight * zz->re;
 			sourceplan.f[icr-1][1] = sim->crdata[icr].weight * zz->im;
+			//printf("\t(%d)\t %d: %g %g\n",i,icr,zz->re,zz->im);
 			zz++;
 		}
+		//printf("\n\t(%d) ...",i);
 		// sourcedata should be ready, do the adjoint transform on source
 		nfsft_adjoint(&sourceplan);
 		// Copy only even rank terms, the rest shall remain zero
+		//printf(" done ...");
 		memset(targetplan.f_hat, 0, targetplan.N_total * sizeof(complx));
+		//printf(" done ...");
 		for( j = 0; j <= sim->Jinterpol[0]; j += 2) {
 			double normalization = 2.0 * ((double) j) + 1.0;
 			for( k = -j; k <= j; k++) {
@@ -466,32 +469,40 @@ master_FWTinterpolate(Sim_info *sim)
 				targetplan.f_hat[NFSFT_INDEX(j, k, &targetplan)][1] = sourceplan.f_hat[NFSFT_INDEX(j, k, &sourceplan)][1] * normalization;
 			}
 		}
+		//printf(" done ...");
 		// do the transformation on target
 		nfsft_trafo(&targetplan);
+		//printf(" done ...");
 		// result is in targetplan.f
 		memcpy(&new_lam[i*ntcr],targetplan.f,ntcr*sizeof(complx));
+		//printf(" done !\n");
 	}
 	free(sim->FWT_lam);
 	sim->FWT_lam = new_lam;
 
 	if (sim->interpolation == 1) { // interpolate also amplitudes data
 		int Ndata = ((sim->EDsymmetry == 1) ? 1 : 2)*sim->FWTASG_nnz*sim->points_per_cycle;
-		compl *new_frs = (complx *)malloc(Ndata*ntcr*sizeof(complx));
+		//printf("%d, %d, %d -> %d\n",sim->EDsymmetry,sim->FWTASG_nnz,sim->points_per_cycle,Ndata);
+		complx *new_frs = (complx *)malloc(Ndata*ntcr*sizeof(complx));
 		if (new_frs == NULL) {
 			fprintf(stderr,"Error: no more memory for new_frs (FWT)\n");
 			exit(1);
 		}
 		for (i=0; i<Ndata; i++) {
-			zz = &sim->FWT_lam[i*ncr];
+			zz = &sim->FWT_frs[i*ncr];
+			//printf("\t(%d)\t",i);
 			for (icr=1; icr<=ncr; icr++) {
 				sourceplan.f[icr-1][0] = sim->crdata[icr].weight * zz->re;
 				sourceplan.f[icr-1][1] = sim->crdata[icr].weight * zz->im;
 				zz++;
 			}
+			//printf("...done");
 			// sourcedata should be ready, do the adjoint transform on source
 			nfsft_adjoint(&sourceplan);
+			//printf("...done");
 			// Copy only even rank terms, the rest shall remain zero
 			memset(targetplan.f_hat, 0, targetplan.N_total * sizeof(complx));
+			//printf("...done");
 			for( j = 0; j <= sim->Jinterpol[0]; j += 2) {
 				double normalization = 2.0 * ((double) j) + 1.0;
 				for( k = -j; k <= j; k++) {
@@ -499,10 +510,13 @@ master_FWTinterpolate(Sim_info *sim)
 					targetplan.f_hat[NFSFT_INDEX(j, k, &targetplan)][1] = sourceplan.f_hat[NFSFT_INDEX(j, k, &sourceplan)][1] * normalization;
 				}
 			}
+			//printf("...done");
 			// do the transformation on target
 			nfsft_trafo(&targetplan);
+			//printf("...done");
 			// result is in targetplan.f
 			memcpy(&new_frs[i*ntcr],targetplan.f,ntcr*sizeof(complx));
+			//printf("...done!\n");
 		}
 		free(sim->FWT_frs);
 		sim->FWT_frs = new_frs;
@@ -518,7 +532,7 @@ master_FWTinterpolate(Sim_info *sim)
  */
 void mpi_work_ASGread(Sim_info *sim)
 {
-/*	int i, j, k, l, icr, npts = 0, ncr, nnz = 0;
+	int i, j, k, l, icr, npts = 0, ncr, nnz = 0;
 	char buf[256];
 	FILE *fh;
 	long fpos, flen;
@@ -526,7 +540,7 @@ void mpi_work_ASGread(Sim_info *sim)
 	assert(sim->interpolation == 3);
 
 	sim->tridata = read_triangle_file(sim->crystfile);
-	ncr = LEN(sim->crdata);
+/*	ncr = LEN(sim->crdata);
 
 	if (sim->imethod == M_DIRECT_FREQ) {
 		for (i=0; i<glob_info.mpi_size; i++) {
@@ -883,7 +897,7 @@ void initial_interpol_run(Tcl_Interp *interp, Sim_info *sim) {
 	wsp->cryst_idx = sim->icr_done;
 	sim_calcfid_interpol(sim, wsp);
 	if (verbose & VERBOSE_PROGRESS) {
-		printf("Worker %i/%i: [cryst %d/%d] for interpolation\n",1,glob_info.mpi_rank+1,sim->icr_done,ncr);
+		printf("Worker %i/%i: [cryst %d/%d] for interpolation\n",1,glob_info.mpi_rank+1,sim->icr_done,thrd.ncr);
 		fflush(stdout);
 	}
 	wsp_destroy(sim, wsp);
@@ -1011,7 +1025,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 				}
 			}
 		}
-		nfsft_forget(); // free NFFT pre-calculated globals
+		//nfsft_forget(); // free NFFT pre-calculated globals
 		break; }
 	case 3: { // ASGinterpolation
 		int iz, iave, irf;
@@ -1046,7 +1060,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 						sim->icr_done = 0;
 					}
 					/* start calculation in threads */
-					assert(sim->FWT_frs != NULL && sim->FWT_lam != NULL);
+					assert(sim->ASG_freq != NULL && sim->ASG_ampl != NULL);
 					glob_info.cont_thread = 2;
 					pthread_barrier_wait(&simpson_b_start);
 					/* wait for completion */
@@ -1093,7 +1107,6 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 	}
 	sim_destroy(sim,0);
 	free(sim);
-	free(thrd);
 	free_double_vector(zvals);
 	free_double_vector(zoffsetvals);
 	free_averaging_data(&avestruct,Navepar);

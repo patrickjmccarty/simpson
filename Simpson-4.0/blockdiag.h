@@ -56,6 +56,7 @@ void change_basis_pulse(Sim_info *sim, Sim_wsp *wsp, int basis);
 void change_basis_delay(Sim_info *sim, Sim_wsp *wsp);
 int blk_cm_isdiag(blk_mat_complx *blkm);
 blk_mat_complx * blk_cm_diag(blk_mat_complx *Ud);
+blk_mat_complx * blk_cm_diag_sort(blk_mat_complx *Ud);
 blk_mat_complx * blk_cm_power(blk_mat_complx *blkm, int n);
 complx blk_cm_trace_adjoint(blk_mat_complx *A, blk_mat_complx *B, Sim_info *sim);
 int blk_dm_nnz(blk_mat_double *blkm);
