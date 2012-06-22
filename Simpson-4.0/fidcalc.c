@@ -7,6 +7,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <assert.h>
 #include "fidcalc.h"
 #include "defs.h"
@@ -18,7 +19,7 @@
 #include "fftw3.h"
 
 	/* for acurate timings on windows */
-#define TIMING
+//#define TIMING
 #include "timing.h"
 
 // Result = +1 if there is symmetry, -1 otherwise
@@ -3630,7 +3631,10 @@ void gcompute_ASGdata(Sim_info *sim, Sim_wsp *wsp) {
 	free_blk_mat_complx(wsp->STO[wsp->acqblock_sto-1]);
 	wsp->STO[wsp->acqblock_sto-1] = NULL;
 	for (i=ACQBLOCK_STO_INI; i<wsp->acqblock_sto; i++) {
-		if (wsp->matrix[i] != NULL) free_complx_matrix(wsp->matrix[i]);
+		if (wsp->matrix[i] != NULL) {
+			free_complx_matrix(wsp->matrix[i]);
+			wsp->matrix[i] = NULL;
+		}
 		free_complx_matrix(wsp->matrix[i+Ng]);
 		wsp->matrix[i+Ng] = NULL;
 	}
@@ -3660,6 +3664,7 @@ void gcompute_FWTdata(Sim_info *sim, Sim_wsp *wsp) {
 	// allocate global vectors in the initial run
     if (sim->FWT_lam == NULL) {
     	sim->points_per_cycle = sim->ngamma;
+    	sim->ASG_period = sim->taur;
     	sim->FWT_lam = (complx*)malloc(matdim*LEN(sim->crdata)*sizeof(complx));
         sim->FWTASG_irow = (int*)malloc((matdim+1)*sizeof(int));
         sim->FWTASG_icol =(int*)malloc(matdim*matdim*sizeof(int)); // just large enough
@@ -3901,7 +3906,8 @@ void collect_spc_interpol_all(int icr, Sim_info *sim, complx *fid)
 		dptr++;
 	}
 	// control print-out
-	//for (i=0; i<acqdata->dim; i++) printf("freq[%d] = %g\n",i,freq[i]);
+	//printf("... icr = %d ...\n",icr);
+	//for (i=0; i<sim->matdim; i++) printf("freq[%d] = %g\n",i,freq[i]);
 
 	binsize = sim->sw*2*M_PI/sim->np;
 	fftw_complex *fftin1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex)*Ng*4);
@@ -3921,10 +3927,12 @@ void collect_spc_interpol_all(int icr, Sim_info *sim, complx *fid)
 				complx ph = Cexpi(-diff*sim->taur*1.0e-6/Ng);
 				complx phmul = Cunit;
 				int dataidx2 = sp_idx(sim->FWTASG_irow,sim->FWTASG_icol,*ic,r);
+				//printf("\nr = %d, c = %d : %g\n",r, *ic, diff);
 				for (i=0; i<Ng; i++) {
 					complx *zz1 = sim->FWT_frs + (icr-1 + i*ntcr + dataidx*Ng*ntcr); // det_rs(i)
 					fftin1[i][0] = zz1->re*phmul.re - zz1->im*phmul.im;
 					fftin1[i][1] = zz1->re*phmul.im + zz1->im*phmul.re;
+					//printf("fftin1 = (%g, %g)\n",fftin1[i][0],fftin1[i][1]);
 					if (dataidx2 >= 0) {
 						zz1 = sim->FWT_frs + (icr-1 + i*ntcr + dataidx2*Ng*ntcr); // det_sr(i)
 						fftin2[i][0] = zz1->re*phmul.re - zz1->im*phmul.im;
@@ -3951,6 +3959,7 @@ void collect_spc_interpol_all(int icr, Sim_info *sim, complx *fid)
 					}
 					//fid[bin].re += (zzre*acqdata->cosph - zzim*acqdata->sinph)*weight;
 					//fid[bin].im += (zzim*acqdata->cosph + zzre*acqdata->sinph)*weight;
+					//printf("i = %d : %g, 0.0\n",i,zzre*0.5);
 				}
 				ic++;
 				dataidx++;
@@ -4243,4 +4252,137 @@ void collect_spc_interpol_lam(int icr, Sim_info *sim, complx *fid)
     free(freq);
 
     TIMING_TOC(tv1,tv2,"generate spectrum from FWT(lam) data");
+}
+
+
+void convert_FWTtoASG_gcompute(Sim_info *sim, int icr)
+{
+	double *freq, *dptr, diff;
+	complx *z1;
+	int i, m, r, c, *ic, ncrf=0, icrf=0;
+	int dim = sim->matdim;
+	int ncr = LEN(sim->targetcrdata);
+	int Ng = sim->points_per_cycle;
+	int nnz = sim->FWTASG_nnz;
+	double dtg = sim->ASG_period / (double)Ng;
+
+	if (sim->interpolation == 4) {
+		ncrf = ncr;
+		icrf = icr;
+	} else { // FWT_frs were not enlarged
+		ncrf = LEN(sim->crdata);
+		icrf = sim->crmap[icr-1];
+	}
+
+	//printf("... icr = %d (%d), ncr = %d(%d)\n",icr,icrf,ncr,ncrf);
+	freq = dptr = (double*)malloc(dim*sizeof(double));
+	if (freq == NULL) {
+		fprintf(stderr,"Error: convert_FWTtoASG_gcompute - no more memory for freq\n");
+		exit(1);
+	}
+
+	z1 = &sim->FWT_lam[icr-1];
+	for (i=0; i<dim; i++) {
+		*dptr = -Carg((*z1))/sim->ASG_period*1.0e6;
+		z1 += ncr;
+		dptr++;
+	}
+	// control print-out
+	//printf("... icr = %d ...\n",icr);
+	//for (i=0; i<dim; i++) printf("freq[%d] = %g\n",i,freq[i]);
+
+    fftw_complex *fftin1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex)*Ng*4);
+    fftw_complex *fftout1 = fftin1 + Ng;
+    fftw_plan p1 = fftw_plan_dft_1d(Ng, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
+    fftw_complex *fftin2 = fftin1 + 2*Ng;
+    fftw_complex *fftout2 = fftin1 + 3*Ng;
+    fftw_plan p2 = fftw_plan_dft_1d(Ng, fftin2, fftout2, FFTW_FORWARD, FFTW_ESTIMATE);
+    if (!fftin1 || !p1 || !p2) {
+    	fprintf(stderr,"Error: convert_FWTtoASG_gcomput - no more memory for FFTW structures\n");
+    	exit(1);
+    }
+
+	if (sim->EDsymmetry == 1) {
+	    m = 0;
+	    ic = sim->FWTASG_icol;
+	    for (r=1; r<=dim; r++) {
+	    	int nc = sim->FWTASG_irow[r] - sim->FWTASG_irow[r-1];
+	    	for (c=0; c<nc; c++) {
+				diff = sim->ASG_freq[(icr-1)*nnz + m] = freq[r-1] - freq[*ic-1];
+				int m2 = sp_idx(sim->FWTASG_irow,sim->FWTASG_icol,*ic,r);
+				complx ph = Cexpi(-diff*dtg*1.0e-6);
+				complx phmul = Complx(1.0,0.0);
+				//printf("\t m=%d, m2=%d\n",m,m2);
+				//printf("\nr = %d, c = %d : diff = %g\n",r, *ic, diff);
+	    		for (i=0; i<Ng; i++) {
+	    			complx *zz1 = &sim->FWT_frs[(icrf-1) + i*ncrf + m*ncrf*Ng];
+	    			fftin1[i][0] = zz1->re*phmul.re - zz1->im*phmul.im;
+	    			fftin1[i][1] = zz1->re*phmul.im + zz1->im*phmul.re;
+					//printf("fftin1 = (%g, %g)\n",fftin1[i][0],fftin1[i][1]);
+	    			if (m2 >= 0){
+	    				zz1 =  &sim->FWT_frs[(icrf-1) + i*ncrf + m2*ncrf*Ng];
+		    			fftin2[i][0] = zz1->re*phmul.re - zz1->im*phmul.im;
+		    			fftin2[i][1] = zz1->re*phmul.im + zz1->im*phmul.re;
+	    			}
+	    			phmul = Cmul(phmul,ph);
+	    		}
+	    		fftw_execute(p1);
+	    		if (m2 >= 0) fftw_execute(p2);
+				for (i=0; i<Ng; i++) {
+					int idx = (i + Ng/2 + 1) % Ng;
+					complx *zz1 = &sim->ASG_ampl[(icr-1)*nnz*Ng+m*Ng+i];
+					zz1->re = 0.5*(fftout1[idx][0]*fftout1[idx][0] - fftout1[idx][1]*fftout1[idx][1]);
+					zz1->im = 0.0;
+					if (m2 >= 0) {
+						zz1->re += fftout1[idx][0]*fftout2[idx][1] - fftout1[idx][1]*fftout2[idx][0];
+						int idx2 = ( ( (Ng-i)%Ng ) + Ng/2 + 1) % Ng;
+						zz1->re += 0.5*(fftout1[idx][0]*fftout2[idx2][0] - fftout1[idx][1]*fftout2[idx2][1]);
+						zz1->im += 0.5*(fftout1[idx][0]*fftout2[idx2][1] + fftout1[idx][1]*fftout2[idx2][0]);
+					}
+					//printf("i = %d : %g, %g\n",i,zz1->re, zz1->im);
+				}
+				ic++;
+				m++;
+	    	}
+	    }
+		// END of ED symmetry calculation
+	} else {
+	    m = 0;
+	    ic = sim->FWTASG_icol;
+	    for (r=1; r<=dim; r++) {
+	    	int nc = sim->FWTASG_irow[r] - sim->FWTASG_irow[r-1];
+	    	for (c=0; c<nc; c++) {
+				diff = sim->ASG_freq[(icr-1)*nnz + m] = freq[r-1] - freq[*ic-1];
+				complx ph = Cexpi(-diff*dtg*1.0e-6);
+				complx phmul = Complx(1.0,0.0);
+	    		for (i=0; i<Ng; i++) {
+	    			complx *zz1 = &sim->FWT_frs[(icrf-1) + i*2*ncrf + m*2*ncrf*Ng];
+	    			complx *zz2 = &sim->FWT_frs[ncrf+(icrf-1) + i*2*ncrf + m*2*ncrf*Ng];
+	    			fftin1[i][0] = zz1->re*phmul.re + zz1->im*phmul.im;
+	    			fftin1[i][1] = zz1->re*phmul.im - zz1->im*phmul.re;
+	    			fftin2[i][0] = zz2->re*phmul.re - zz2->im*phmul.im;
+	    			fftin2[i][1] = zz2->re*phmul.im + zz2->im*phmul.re;
+	    			phmul = Cmul(phmul,ph);
+	    		}
+	    		fftw_execute(p1);
+	    		fftw_execute(p2);
+				for (i=0; i<Ng; i++) {
+					int idx = (i + Ng/2 + 1) % Ng;
+					complx *zz1 = &sim->ASG_ampl[(icr-1)*nnz*Ng+m*Ng+i];
+					zz1->re = fftout1[idx][0]*fftout2[idx][0] + fftout1[idx][1]*fftout2[idx][1];
+					zz1->im = fftout1[idx][0]*fftout2[idx][1] - fftout1[idx][1]*fftout2[idx][0];
+				}
+				ic++;
+				m++;
+	    	}
+	    }
+	    // END on calculations without ED symmetry
+	}
+
+	// freeing memory
+	free(freq);
+    fftw_destroy_plan(p1);
+    fftw_destroy_plan(p2);
+    fftw_free(fftin1);
+
 }

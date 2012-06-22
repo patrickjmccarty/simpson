@@ -40,5 +40,7 @@ void collect_fid_interpol_all(int icr, Sim_info *sim, complx *fid);
 void collect_fid_interpol_lam(int icr, Sim_info *sim, complx *fid);
 void collect_spc_interpol_all(int icr, Sim_info *sim, complx *fid);
 void collect_spc_interpol_lam(int icr, Sim_info *sim, complx *fid);
+void convert_FWTtoASG_gcompute(Sim_info *sim, int icr);
+
 
 #endif /* FIDCALC_H_ */

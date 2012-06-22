@@ -179,6 +179,8 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
 			  s->interpolation = 3;
 		  } else if (!strncmp(buf,"FWTASGinterpolation",12)) {
 			  s->interpolation = 4;
+		  } else if (!strncmp(buf,"FWT2ASGinterpolation",12)) {
+			  s->interpolation = 5;
 		  } else if (!strncmp(buf,"time",4)) {
 			  s->domain = 0;
 		  } else if (!strncmp(buf,"frequency",4)) {
@@ -288,7 +290,7 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
   }
   //printf("\nsim_init test cryst_file: '%s' (%d, %d), '%s'\n",s->crystfile,s->crystfile_from,s->crystfile_to,s->targetcrystfile);
   s->crdata = read_crystfile(s->crystfile, s->crystfile_from, s->crystfile_to);
-  if (s->interpolation == 1 || s->interpolation == 2 || s->interpolation == 4) {
+  if (s->interpolation == 1 || s->interpolation == 2 || s->interpolation == 4 || s->interpolation == 5) {
 	  if (strlen(s->targetcrystfile) == 0) {
 		  fprintf(stderr,"Error: no target crystallite set defined for FWT interpolation.\n");
 		  exit(1);
@@ -302,15 +304,15 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
 	  s->Jinterpol[0] = ( (int)sqrt(6*(LEN(s->crdata)-1)) - 1) / 2;
 	  s->Jinterpol[1] = 2 << (int)(floor(log2((double)s->Jinterpol[0])));
   } else {
-	  s->targetcrdata == NULL;
+	  s->targetcrdata = NULL;
   }
-  if (s->interpolation == 2) {
+  if (s->interpolation == 2 || s->interpolation == 5) {
 	  // load, or create and load, map of nearest crystallites target->source
 	  s->crmap = read_cryst_map(s->crystfile, s->crdata, s->targetcrystfile, s->targetcrdata);
   } else {
 	  s->crmap = NULL;
   }
-  if (s->interpolation == 3 || s->interpolation == 4) {
+  if (s->interpolation == 3 || s->interpolation == 4 || s->interpolation == 5) {
 	  // test for triangle data
 	  // at the moment they are read in mpi_ASG_interpol ...
   }
@@ -558,7 +560,7 @@ void sim_destroy(Sim_info* s, int this_is_copy)
   }
   if (s->ASG_ampl != NULL) {
 	  free(s->ASG_ampl);
-	  s->ASG_ampl == NULL;
+	  s->ASG_ampl = NULL;
   }
   if (s->ASG_freq != NULL) {
 	  free(s->ASG_freq);
@@ -1129,7 +1131,6 @@ void wsp_destroy(Sim_info *s, Sim_wsp *wsp)
     	if (wsp->HQ_off[i]) free_blk_mat_double(wsp->HQ_off[i]);
     }
 
-
     /* when block-diagonalization will be used */
     if (wsp->Hiso != s->Hiso) free_blk_mat_double(wsp->Hiso);
     for (i=0; i<5; i++) {
@@ -1334,7 +1335,7 @@ int sim_calcfid_interpol(Sim_info *sim, Sim_wsp *wsp)
 	  break;
   case M_GCOMPUTE_FREQ:
 	  wsp->dt_gcompute = sim->taur/(double)sim->ngamma;
-      if (sim->interpolation == 1 || sim->interpolation == 2 || sim->interpolation == 4) {
+      if (sim->interpolation == 1 || sim->interpolation == 2 || sim->interpolation == 4 || sim->interpolation == 5) {
     	  gcompute_FWTdata(sim,wsp);
       } else if (sim->interpolation == 3) {
     	  gcompute_ASGdata(sim,wsp);

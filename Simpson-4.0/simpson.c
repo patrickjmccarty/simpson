@@ -479,8 +479,10 @@ void master_FWTinterpolate(Sim_info *sim)
 	}
 	free(sim->FWT_lam);
 	sim->FWT_lam = new_lam;
+	//printf("lams\n");
+	//for (i=0; i<ntcr*sim->matdim; i++) printf("(%d) %g, %g\n",i,sim->FWT_lam[i].re,sim->FWT_lam[i].im);
 
-	if (sim->interpolation == 1) { // interpolate also amplitudes data
+	if (sim->interpolation == 1 || sim->interpolation == 4) { // interpolate also amplitudes data
 		int Ndata = ((sim->EDsymmetry == 1) ? 1 : 2)*sim->FWTASG_nnz*sim->points_per_cycle;
 		//printf("%d, %d, %d -> %d\n",sim->EDsymmetry,sim->FWTASG_nnz,sim->points_per_cycle,Ndata);
 		complx *new_frs = (complx *)malloc(Ndata*ntcr*sizeof(complx));
@@ -527,19 +529,23 @@ void master_FWTinterpolate(Sim_info *sim)
 }
 
 /****
- * this shouls somehow collect all ASG data from all workers.
- * NOT implemented yet but not needed without MPI
+ * this should somehow collect all ASG data from all workers.
+ * NOT implemented yet but not really needed without MPI
  */
 void mpi_work_ASGread(Sim_info *sim)
 {
-	int i, j, k, l, icr, npts = 0, ncr, nnz = 0;
-	char buf[256];
-	FILE *fh;
-	long fpos, flen;
+	//int i, j, k, l, icr, npts = 0, ncr, nnz = 0;
+	//char buf[256];
+	//FILE *fh;
+	//long fpos, flen;
 
-	assert(sim->interpolation == 3);
+	assert(sim->interpolation == 3 || sim->interpolation == 4 || sim->interpolation == 5);
 
-	sim->tridata = read_triangle_file(sim->crystfile);
+	if (sim->interpolation == 3) {
+		sim->tridata = read_triangle_file(sim->crystfile);
+	} else {
+		sim->tridata = read_triangle_file(sim->targetcrystfile);
+	}
 /*	ncr = LEN(sim->crdata);
 
 	if (sim->imethod == M_DIRECT_FREQ) {
@@ -653,6 +659,40 @@ void thread_work_interpol_calcfid(int thread_id)
 	}
 }
 
+void thread_work_FWTtoASG(int thread_id)
+{
+	int i, icr;
+	Sim_info *sim = thrd.sim;
+	int ncr = LEN(sim->targetcrdata);
+
+	assert(sim->interpolation == 4 || sim->interpolation == 5);
+
+	i=0;
+	while (1) {
+		// WARNING!!! This works ONLY IF all MPI slaves have the same number of threads!!!
+		icr = 1+ thread_id + glob_info.num_threads*glob_info.mpi_rank + glob_info.mpi_size*glob_info.num_threads*i;
+		if (icr > ncr) break;
+		switch (sim->imethod) {
+		case M_GCOMPUTE_TIME:
+			fprintf(stderr,"Error: thread_work_FWTtoASG - wrong imethod %d\n",sim->imethod);
+			exit(1);
+			break;
+		case M_GCOMPUTE_FREQ:
+			convert_FWTtoASG_gcompute(thrd.sim,icr);
+			break;
+		case M_DIRECT_TIME:
+			fprintf(stderr,"Error: thread_work_FWTtoASG - wrong imethod %d\n",sim->imethod);
+			exit(1);
+			break;
+		case M_DIRECT_FREQ:
+			fprintf(stderr,"Error: thread_work_FWTtoASG - FWTASG in direct method not implemented yet\n");
+			exit(1);
+			break;
+		}
+		i++;
+	}
+}
+
 void sort_triangle_data(double *frq, TRIANGLE *tri, int *unfold)
 {
 	double dum;
@@ -689,7 +729,13 @@ void thread_work_ASG_interpol(int thread_id)
 	double frq[3], w[3], dum, wbin, fa, fb, fc;
 	TRIANGLE tri;
 	Sim_info *sim = thrd.sim;
+	Cryst *crdata = NULL;
 
+	if (sim->interpolation == 3) { //pure ASG
+		crdata = sim->crdata;
+	} else { // FWTASG interpolations
+		crdata = sim->targetcrdata;
+	}
 	fid = thrd.fids[thread_id];
 	Ntri = LEN(sim->tridata);
 	nnz = sim->FWTASG_nnz;
@@ -723,9 +769,9 @@ void thread_work_ASG_interpol(int thread_id)
 			frq[1] += unfold[1]*sim->wr;
 			frq[2] += unfold[2]*sim->wr;
 			sort_triangle_data(frq,&tri,unfold);
-			w[0] = sim->crdata[tri.a].weight;
-			w[1] = sim->crdata[tri.b].weight;
-			w[2] = sim->crdata[tri.c].weight;
+			w[0] = crdata[tri.a].weight;
+			w[1] = crdata[tri.b].weight;
+			w[2] = crdata[tri.c].weight;
 			for (k=0; k<npts; k++) {
 				int k0 = k+unfold[0]; while (k0 < 0) k0 += npts; while (k0 >= npts) k0 -= npts;
 				int k1 = k+unfold[1]; while (k1 < 0) k1 += npts; while (k1 >= npts) k1 -= npts;
@@ -868,6 +914,9 @@ void simpson_thread_slave(void *thr_id)
 			break;
 		case 5:
 			thread_work_ASG_interpol(thread_id);
+			break;
+		case 6:
+			thread_work_FWTtoASG(thread_id);
 		}
 		/* inform master that job is done by reaching this barrier */
 		pthread_barrier_wait(&simpson_b_end);
@@ -957,7 +1006,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 		cv_zero(fidsum);
 		for(i=0; i<num_threads; i++) {
 			cv_multod(fidsum, thrd.fids[i], 1.0);
-			free_complx_vector(thrd.fids[i]);
+			//free_complx_vector(thrd.fids[i]);
 		}
 		break;
 	case 1:
@@ -1018,7 +1067,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 					weight = sim->rfdata[irf][sim->ss->nchan+1] * aveweight[iave];
 					for(i=0; i<num_threads; i++){
 						cv_multod(fidsum, thrd.fids[i], weight);
-						free_complx_vector(thrd.fids[i]);
+						//free_complx_vector(thrd.fids[i]);
 					}
 					printf("and collected.\n");
 					// repeat for averaging
@@ -1080,7 +1129,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 					weight = sim->rfdata[irf][sim->ss->nchan+1] * aveweight[iave];
 					for(i=0; i<num_threads; i++){
 						cv_multod(fidsum, thrd.fids[i], weight);
-						free_complx_vector(thrd.fids[i]);
+						//free_complx_vector(thrd.fids[i]);
 					}
 					//printf("and collected.\n");
 					// repeat for averaging
@@ -1088,7 +1137,89 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 			}
 		}
 		break; }
-	case 4: // FWTASGinterpolation
+	case 4:
+	case 5: {// FWTASGinterpolation
+		int iz, iave, irf;
+		double weight;
+		fidsum = complx_vector(sim->ntot);
+		cv_zero(fidsum);
+		// all averaging except powder needs to be serial
+		for (iz=1; iz<=nz; iz++) {
+			for (iave=0; iave<Naveval; iave++) {
+				for (irf=1; irf<=nrf; irf++) {
+					/* prepare input data for threads */
+					thrd.Ntot = Ntot;
+					thrd.ncr = ncr;
+					thrd.nrf = irf;
+					thrd.nz = iz;
+					thrd.Nacq = 0;
+					thrd.phase = 0;
+					thrd.zvals = zvals;
+					thrd.zoffsetvals = zoffsetvals;
+					thrd.state = state;
+					thrd.Navepar = Navepar;
+					thrd.Naveval = iave;
+					thrd.ave_struct = avestruct;
+					thrd.ave_weight = aveweight;
+					thrd.sim = sim;
+					if (sim->FWT_lam == NULL) {
+						sim->icr_done = ncr;
+						initial_interpol_run(interp,sim);
+					} else {
+						sim->icr_done = 0;
+					}
+					/* start FWT calculation in threads first */
+					assert(sim->FWT_frs != NULL && sim->FWT_lam != NULL);
+					glob_info.cont_thread = 2;
+					pthread_barrier_wait(&simpson_b_start);
+					/* wait for completion */
+					pthread_barrier_wait(&simpson_b_end);
+#ifdef MPI
+					// wait somehow for all MPI slaves to finish, only then continue
+					MPI_Barrier(MPI_COMM_WORLD);
+#endif
+					// read data files and interpolate, use ONLY MPI workers
+					// NFFT library does not work properly on windows with threads
+					master_FWTinterpolate(sim);
+#ifdef MPI
+					// wait somehow for all MPI slaves to finish, only then continue
+					MPI_Barrier(MPI_COMM_WORLD);
+#endif
+					printf("\nFWT interpolation done\n");
+					// prepare data for ASG interpolation
+					if (sim->ASG_freq == NULL) {
+						sim->ASG_freq = (double*)malloc(LEN(sim->targetcrdata)*sim->FWTASG_nnz*sizeof(double));
+						sim->ASG_ampl = (complx*)malloc(LEN(sim->targetcrdata)*sim->FWTASG_nnz*sim->points_per_cycle*sizeof(complx));
+						if ( sim->ASG_freq == NULL || sim->ASG_ampl == NULL ) {
+							fprintf(stderr,"Error: thread master - no more memory for ASG data");
+							exit(1);
+						}
+					}
+					assert(sim->ASG_freq != NULL && sim->ASG_ampl != NULL);
+					glob_info.cont_thread = 6;
+					pthread_barrier_wait(&simpson_b_start);
+					/* wait for completion */
+					pthread_barrier_wait(&simpson_b_end);
+					printf("\nASG data generated \n");
+					// read all data to memory
+					mpi_work_ASGread(sim);
+					// calculate fid
+					glob_info.cont_thread = 5;
+					pthread_barrier_wait(&simpson_b_start);
+					/* wait for completion */
+					pthread_barrier_wait(&simpson_b_end);
+					printf("\nfids generated ... ");
+					weight = sim->rfdata[irf][sim->ss->nchan+1] * aveweight[iave];
+					for(i=0; i<num_threads; i++){
+						cv_multod(fidsum, thrd.fids[i], weight);
+						//free_complx_vector(thrd.fids[i]);
+					}
+					printf("and collected.\n");
+					// repeat for averaging
+				}
+			}
+		}
+		break; }
 	default:
 		fprintf(stderr,"Error: invalid value for sim->interpolation (%d)\n",sim->interpolation);
 		exit(1);
