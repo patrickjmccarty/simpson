@@ -3158,7 +3158,8 @@ void gcompute_fid(Sim_info *sim, Sim_wsp *wsp) {
 		z1 = Ud->m[i].data;
 		assert(Ud->m[i].type == MAT_DENSE_DIAG || Ud->blk_dims[i] == 1);
 		for (ll=0; ll<Ud->blk_dims[i]; ll++) {
-			*z2 = *z3 = CRpow(*z1,m_Ng);
+			z2->re = 1.0; z2->im = 0.0;
+			*z3 = CRpow(*z1,m_Ng);
 			z1++; z2++; z3++;
 		}
 	}
