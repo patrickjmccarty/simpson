@@ -3267,7 +3267,8 @@ complx * qdata_EDsym(double *freq, double dtg, mat_complx **A, int Ng, int *irow
 	int *ic;
 	int matdim = A[0]->row;
 	int nnz = irow[matdim] - 1;
-	double diff;
+	double diff, dum;
+	complx ph, phmul;
 
 	TIMING_INIT_VAR2(tv1,tv2);
 	TIMING_TIC(tv1);
@@ -3291,13 +3292,16 @@ complx * qdata_EDsym(double *freq, double dtg, mat_complx **A, int Ng, int *irow
     	int nc = irow[r] - irow[r-1];
     	for (c=0; c<nc; c++) {
 			diff = freq[r-1] - freq[*ic-1];
-			complx ph = Cexpi(-diff*dtg*1.0e-6);
-			complx phmul = Complx(1.0,0.0);
+			ph = Cexpi(-diff*dtg*1.0e-6);
+			phmul.re = 1.0; phmul.im = 0.0;
     		for (i=0; i<Ng; i++) {
     			complx zz1 = cm_getelem(A[i],r,*ic);  //q_rs(k)
     			fftin[i][0] = zz1.re*phmul.re - zz1.im*phmul.im;
     			fftin[i][1] = zz1.re*phmul.im + zz1.im*phmul.re;
-    			phmul = Cmul(phmul,ph);
+    			dum = phmul.re;
+    			phmul.re = dum*ph.re - phmul.im*ph.im;
+    			phmul.im = dum*ph.im + phmul.im*ph.re;
+    			//phmul = Cmul(phmul,ph);
     		}
     		fftw_execute(plan);
     		//printf("\nr = %d, c = %d : ",r,*ic);
