@@ -217,6 +217,7 @@ void direct_acqblock(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp *wsp)
 	/* evaluate acq_block to get its propagator(s) */
 	if (Tcl_EvalObjEx(interp,obj,0) != TCL_OK) {
 		fprintf(stderr,"acq_block error: (1) can not execute block:\n'%s'\n\n",Tcl_GetString(obj));
+		fprintf(stderr,"Error: %s\n",Tcl_GetStringResult(interp));
 		exit(1);
 	}
 	t0 = wsp->t - t0;
@@ -248,6 +249,7 @@ void direct_acqblock(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp *wsp)
 	for (i=1; i<k; i++) {
 		if (Tcl_EvalObjEx(interp,obj,0) != TCL_OK) {
 			fprintf(stderr,"acq_block error: (%d) can not execute block:\n'%s'\n\n",i+1,Tcl_GetString(obj));
+			fprintf(stderr,"Error: %s\n",Tcl_GetStringResult(interp));
 			exit(1);
 		}
 	}
@@ -369,6 +371,7 @@ void direct_acqblock_time_FWT(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_
 	// evaluate acq_block to get its propagator(s)
 	if (Tcl_EvalObjEx(interp,obj,0) != TCL_OK) {
 		fprintf(stderr,"acq_block error: (1) can not execute block:\n'%s'\n\n",Tcl_GetString(obj));
+		fprintf(stderr,"Error: %s\n",Tcl_GetStringResult(interp));
 		exit(1);
 	}
 	t0 = wsp->t - t0;
@@ -401,6 +404,7 @@ void direct_acqblock_time_FWT(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_
 	for (i=1; i<k; i++) {
 		if (Tcl_EvalObjEx(interp,obj,0) != TCL_OK) {
 			fprintf(stderr,"acq_block error: (%d) can not execute block:\n'%s'\n\n",i+1,Tcl_GetString(obj));
+			fprintf(stderr,"Error: %s\n",Tcl_GetStringResult(interp));
 			exit(1);
 		}
 	}
@@ -517,7 +521,7 @@ void direct_acqblock_time_FWT(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_
  ****/
 void direct_acqblock_freq(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp *wsp)
 {
-	int i, j, k=0, m=0, phase, matdim, bin;
+	int i, j, k, m, phase, matdim, bin;
 	double cosph, sinph, t0, period, *freq, freqT, *dptr, diff;
 	complx *z1, z, zz;
 	mat_complx *rho, *det;
@@ -554,11 +558,20 @@ void direct_acqblock_freq(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp 
 		exit(1);
 	}
 	period = wsp->t - t0;
+	// check synchronization with rotation
+	k = m = 1;
+	if (sim->taur > 0) {
+		modnumbers(period,sim->taur,&k,&m);
+		if (verbose & VERBOSE_ACQBLOCK) {
+			printf("acq_block synchronization info: %d * acq_block(%g us) = %d * rotor period(%g us)\n",k,period,m,sim->taur);
+		}
+		period *= k;
+	}
 	freqT = 2*M_PI*1e6/period;
 	wsp->t = t0; // reset time counter
 	// adjust dwelltime
 	wsp->dw = period/sim->points_per_cycle;
-	printf("period = %g, freqT = %g, N = %d, dw = %g\n",period,freqT,sim->points_per_cycle,wsp->dw);
+	//printf("period = %g, freqT = %g, N = %d, dw = %g\n",period,freqT,sim->points_per_cycle,wsp->dw);
 
 	/* initialize propagator counters */
 	wsp->acqblock_sto = ACQBLOCK_STO_INI;  // points to free position
@@ -566,9 +579,12 @@ void direct_acqblock_freq(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp 
 	wsp->evalmode = EM_ACQBLOCK;
 
 	/* evaluate acq_block to get its propagator(s) */
-	if (Tcl_EvalObjEx(interp,obj,0) != TCL_OK) {
-		fprintf(stderr,"acq_block error: (1) can not execute block:\n'%s'\n\n",Tcl_GetString(obj));
-		exit(1);
+	for (i=0; i<k; i++) {
+		if (Tcl_EvalObjEx(interp,obj,0) != TCL_OK) {
+			fprintf(stderr,"acq_block error: (1) run %d, can not execute block:\n'%s'\n\n",i+1,Tcl_GetString(obj));
+			fprintf(stderr,"Error: %s\n",Tcl_GetStringResult(interp));
+			exit(1);
+		}
 	}
 	t0 = wsp->t - t0;
 	if (fabs(t0-period) > TINY) {
@@ -614,7 +630,7 @@ void direct_acqblock_freq(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp 
 		assert(Ud->m[i].type == MAT_DENSE_DIAG || Ud->blk_dims[i] == 1);
 		for (j=0; j<Ud->blk_dims[i]; j++) {
 			*dptr = -Carg((*z1))/period*1.0e6;
-			printf("freq[%d] = %g\n",j,*dptr);
+			//printf("freq[%d] = %g\n",j,*dptr);
 			//*z1 = CRpow(*z1,1.0/(double)sim->points_per_cycle);
 			//z1->re = cos(*dptr*period*1.0e-6/sim->points_per_cycle);
 			//z1->im = -sin(*dptr*period*1.0e-6/sim->points_per_cycle);
@@ -666,7 +682,7 @@ void direct_acqblock_freq(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp 
 	// construct the spectrum
 	int r, c, N = sim->points_per_cycle;
 	double binsize = sim->sw*2*M_PI/sim->np;
-	printf("binsize = %g\n",binsize);
+	//printf("binsize = %g\n",binsize);
     fftw_complex *fftin = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
     fftw_complex *fftout = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
     fftw_plan p = fftw_plan_dft_1d(N, fftin, fftout, FFTW_FORWARD, FFTW_ESTIMATE);
@@ -710,7 +726,9 @@ void direct_acqblock_freq(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp 
 		int nc = irow[r] - irow[r-1];
 		for (i=0; i<nc; i++) {
 			c = *ic;
-			zz = cm_getelem(rho,r,c);
+			//zz = cm_getelem(rho,r,c);
+			zz = cm_getelem(rho,c,r);
+			//printf("zz = rho(%d,%d) = %g, %g\n",c,r,zz.re, zz.im);
 			if (sim->interpolation == 1) { // FWT interpolation storage
 				for (j=0; j<N; j++) {
 					z = Cmul(zz,cm_getelem(wsp->matrix[k+j],c,r));
@@ -719,31 +737,38 @@ void direct_acqblock_freq(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp 
 				ic++;
 				continue;
 			}
-			diff = freq[c-1] - freq[r-1];
+			//diff = freq[c-1] - freq[r-1];
+			diff = freq[r-1] - freq[c-1];
 			if (sim->interpolation == 3) { // ASG interpol
 				fwrite(&diff,sizeof(double),1,wsp->interpol_file);
 			}
 			complx ph = Cexpi(-diff*period*1.0e-6/N);
 			complx phmul = Complx(1.0,0.0);
 			for (j=0; j<N; j++) {
-				z = Cmul(phmul,cm_getelem(wsp->matrix[k+j],c,r));
+				//z = Cmul(phmul,cm_getelem(wsp->matrix[k+j],c,r));
+				z = Cmul(phmul,cm_getelem(wsp->matrix[k+j],r,c));
+				//cm_print(wsp->matrix[k+j],"wsp matrix");
+				//printf("z = %g, %g (phmul = %g, %g)\t",z.re, z.im, phmul.re, phmul.im);
 				fftin[j][0] = zz.re*z.re - zz.im*z.im;
 				fftin[j][1] = zz.im*z.re + zz.re*z.im;
 				phmul = Cmul(phmul,ph);
+				//printf("fftin[%d] = %g, %g\n",j,fftin[j][0],fftin[j][1]);
 			}
 			fftw_execute(p);
 			if (sim->interpolation ==  3) { // ASG interpol
 				fwrite(fftout,sizeof(fftw_complex),N,wsp->interpol_file);
 			}
 			for (j=0; j<N; j++) {
-				bin = (int)(1.5-(diff + freqT*(j-N/2+1))/binsize);
-				printf("index %d -> freq = %g, bin %d -> ",j,diff+freqT*(j-N/2+1),bin);
-				if (bin < 1) bin += sim->np;
-				if (bin > sim->np) bin -= sim->np;
-				printf("%d\n",bin);
+				bin = (int)(1.5-(diff + freqT*(j-N/2+1))/binsize +sim->np/2);
+				//printf("index %d -> freq = %g, bin %d -> ",j,diff+freqT*(j-N/2+1),bin);
+				while (bin < 1) bin += sim->np;
+				while (bin > sim->np) bin -= sim->np;
+				//printf("%d\n",bin);
 				assert(bin >= 1 && bin <= sim->np);
-				wsp->fid[bin].re += fftout[j][0]*cosph - fftout[j][1]*sinph;
-				wsp->fid[bin].im += fftout[j][1]*cosph + fftout[j][0]*sinph;
+				int idx = (j+N/2+1)%N;
+				wsp->fid[bin].re += fftout[idx][0]*cosph - fftout[idx][1]*sinph;
+				wsp->fid[bin].im += fftout[idx][1]*cosph + fftout[idx][0]*sinph;
+				//printf(" sums to %g, %g\n",wsp->fid[bin].re,wsp->fid[bin].im);
 			}
 			ic++;
 		}

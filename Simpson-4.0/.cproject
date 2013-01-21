@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<?fileVersion 4.0.0?>
-
-<cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
+<?fileVersion 4.0.0?><cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
 	<storageModule moduleId="org.eclipse.cdt.core.settings">
 		<cconfiguration id="cdt.managedbuild.config.gnu.mingw.exe.debug.471363445">
 			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="cdt.managedbuild.config.gnu.mingw.exe.debug.471363445" moduleId="org.eclipse.cdt.core.settings" name="Debug">
@@ -210,6 +208,8 @@
 				</scannerConfigBuildInfo>
 			</storageModule>
 			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
+			<storageModule moduleId="org.eclipse.cdt.core.language.mapping"/>
+			<storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
 		</cconfiguration>
 		<cconfiguration id="cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.107772950.787737434">
 			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.107772950.787737434" moduleId="org.eclipse.cdt.core.settings" name="Win32-pthreads-GNU">
@@ -240,15 +240,15 @@
 									<listOptionValue builtIn="false" value="&quot;C:\Tcl\include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;C:\blas_lapack\Cblas\include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;C:\Program Files\Pthreads\include&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;D:\Tosner\Arhus12\NFFT\fftw-3.3-dll32&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;D:\Tosner\Arhus12\NFFT\nfft-3.2.0\include&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;D:\Tosner\Arhus\Arhus12\NFFT\fftw-3.3-dll32&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;D:\Tosner\Arhus\Arhus12\NFFT\nfft-3.2.0\include&quot;"/>
 								</option>
 								<option id="gnu.c.compiler.option.preprocessor.def.symbols.1007808655" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols"/>
 								<option defaultValue="gnu.c.optimization.level.most" id="gnu.c.compiler.option.optimization.level.1661736942" name="Optimization Level" superClass="gnu.c.compiler.option.optimization.level" valueType="enumerated"/>
 								<option id="gnu.c.compiler.option.debugging.level.1091158992" name="Debug Level" superClass="gnu.c.compiler.option.debugging.level" value="gnu.c.debugging.level.default" valueType="enumerated"/>
-								<option id="gnu.c.compiler.option.debugging.gprof.842965300" name="Generate gprof information (-pg)" superClass="gnu.c.compiler.option.debugging.gprof" value="true" valueType="boolean"/>
+								<option id="gnu.c.compiler.option.debugging.gprof.842965300" name="Generate gprof information (-pg)" superClass="gnu.c.compiler.option.debugging.gprof" value="false" valueType="boolean"/>
 								<option id="gnu.c.compiler.option.misc.other.1963215767" name="Other flags" superClass="gnu.c.compiler.option.misc.other" value="-c -fmessage-length=0 -malign-double" valueType="string"/>
-								<option id="gnu.c.compiler.option.debugging.prof.642099373" superClass="gnu.c.compiler.option.debugging.prof" value="false" valueType="boolean"/>
+								<option id="gnu.c.compiler.option.debugging.prof.642099373" name="Generate prof information (-p)" superClass="gnu.c.compiler.option.debugging.prof" value="false" valueType="boolean"/>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1735556192" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.c.linker.mingw.base.418320190" name="MinGW C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.mingw.base">
@@ -263,8 +263,8 @@
 									<listOptionValue builtIn="false" value="m"/>
 								</option>
 								<option id="gnu.c.link.option.paths.547428810" name="Library search path (-L)" superClass="gnu.c.link.option.paths" valueType="libPaths">
-									<listOptionValue builtIn="false" value="&quot;D:\Tosner\Arhus12\NFFT\fftw-3.3-dll32&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;D:\Tosner\Arhus12\NFFT\nfft-3.2.0\.libs&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;D:\Tosner\Arhus\Arhus12\NFFT\fftw-3.3-dll32&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;D:\Tosner\Arhus\Arhus12\NFFT\nfft-3.2.0\.libs&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;C:\Tcl\lib&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;C:\blas_lapack&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;C:\blas_lapack\Cblas\lib&quot;"/>
@@ -451,6 +451,8 @@
 				</scannerConfigBuildInfo>
 			</storageModule>
 			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
+			<storageModule moduleId="org.eclipse.cdt.core.language.mapping"/>
+			<storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
 		</cconfiguration>
 	</storageModule>
 	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
