@@ -296,7 +296,7 @@ char simpson_tcl[] =
     "    inner_rotor_angle outer_rotor_angle inner_spin_rate outer_spin_rate dor\n"
     "    string oc_tol_cg oc_tol_ls oc_mnbrak_step oc_max_iter oc_cutoff \n"
     "    oc_cutoff_iter oc_var_save_iter oc_var_save_proc oc_cg_min_step oc_max_brack_eval\n"
-    "    oc_max_brent_eval oc_verbose\n"
+    "    oc_max_brent_eval oc_verbose oc_grad_level oc_method\n"
     "    rfprof_file use_3_angle_set acq_adjoint\n"
     "    zprofile zvals relax prop_method use_sparse num_cores averaging_file\n"
 	"    points_per_cycle ED_symmetry\n"

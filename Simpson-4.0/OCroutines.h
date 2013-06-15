@@ -7,8 +7,8 @@
 /* ZT: structure to hold and pass OC parameters */
 typedef struct _OCoptPars {
 	/* all are read only */
-	double eps, tol, mnbkstep, cut, stepmin;
-	int isinit, ndim, nIterations, nreport, ncut, max_brack_eval, max_brent_eval, verb;
+	double eps, tol, mnbkstep, cut, stepmin, grad_level;
+	int isinit, ndim, method, nIterations, nreport, ncut, max_brack_eval, max_brent_eval, verb;
 	char VarSaveProc[64];
 	int gradmode, gradmodeprop, *var_shapes, *grad_shapes;
 	double *var_shapes_min, *var_shapes_max, *var_shapes_rmsmax;
@@ -27,6 +27,8 @@ void _pulse_shapedOC(Sim_info *sim, Sim_wsp *wsp, char *code, int Nch, int Nelem
 void _pulse_shapedOCprops(Sim_info *sim, Sim_wsp *wsp, char *code, int Nch, int Nelem, int *mask, double steptime);
 void _pulse_and_zgrad_shapedOC(Sim_info *sim, Sim_wsp *wsp, char *code, int Nch, int Nelem, int *mask, int zgrs, double steptime);
 void _pulse_and_zgrad_shapedOCprops(Sim_info *sim, Sim_wsp *wsp, char *code, int Nch, int Nelem, int *mask, int zgrs, double steptime);
+void _pulse_shapedOC_2(Sim_info *sim, Sim_wsp *wsp, int Nelem, int *OCchanmap, int *mask, double duration);
+void _pulse_shapedOCprops_2(Sim_info *sim, Sim_wsp *wsp, int Nelem, int *OCchanmap, int *mask, double duration);
 
 void test_print_codes(Sim_wsp *wsp);
 

@@ -116,6 +116,7 @@ typedef struct _Sim_info {
 #define ACQBLOCK_STO_INI 1001
 #define ACQBLOCK_STO_END 1280
 #define MAXOCPROPS 5120
+#define MAXOCSHAPES 4
 
 /* all times are stored in microseconds */
 typedef struct _Sim_wsp {
@@ -145,7 +146,7 @@ typedef struct _Sim_wsp {
     double acqphase, acqblock_t0;
     /* parameters for Optimal Control */
     int OC_propstatus, OC_mxpos;
-    mat_complx *OC_dens[MAXOCPROPS];
+    mat_complx *OC_dens[MAXOCPROPS], *OC_deriv[MAXOCPROPS][MAXOCSHAPES*2];
     blk_mat_complx *OC_props[MAXOCPROPS];
     char *OC_mxcode[MAXOCPROPS];
     /* parametrs for spinach */

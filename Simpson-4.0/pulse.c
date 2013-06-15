@@ -1388,7 +1388,7 @@ int tclPulseShaped(ClientData data,Tcl_Interp* interp,int argc, Tcl_Obj *argv[])
 {
   int i, j, slot, Nelem=-1, Nch=0, basis=0;
   double duration, steptime;
-  int* mask;
+  int *mask, *OCchanmap = NULL;
   char cd[128], buf2[64];;
   Sim_info *sim = NULL;
   Sim_wsp *wsp = NULL;
@@ -1469,35 +1469,64 @@ int tclPulseShaped(ClientData data,Tcl_Interp* interp,int argc, Tcl_Obj *argv[])
       /* determine which channels are active for gradients */
       if (!OCpar.grad_shapes) 
          return TclError(interp,"error when calculating propagators for gradients: grad_shapes not defined");
-      int Nsh=LEN(OCpar.grad_shapes);      
-      cd[0]='\0';    
-      for (i=1; i<=sim->ss->nchan; i++) {
-         for (j=1; j<=Nsh; j++) {
-        	 if (OCpar.grad_shapes[j] == mask[i]) {
-        		 sprintf(buf2," I%dC%d",j,i);
-        		 strcat(cd,buf2);
-        		 Nch++;
-        		 break;
-        	 }
-         }
-      }  
-      /* check if there is any gradient to calculate */
-      if (Nch==0) {
-         /* no, then do usual things */
-	     DEBUGPRINT("pulse_shaped - no variable shapes, just creates propagator\n");
-	     _pulse_shaped(sim,wsp,Nelem, mask, steptime);
-      } else {
-         /* yes, check for type of optimization */
-    	  DEBUGPRINT("pulse_shaped created code '%s'\n",cd);
-    	  if ( OCpar.gradmodeprop == 1 ) {
-    		  /* do stuff for propagator optimization */
-    		  _pulse_shapedOCprops(sim,wsp,cd,Nch,Nelem,mask,steptime);
-    	  } else {
-    		  /* do stuff for state to state optimization */
-    		  _pulse_shapedOC(sim,wsp,cd,Nch,Nelem,mask,steptime);
+      int Nsh=LEN(OCpar.grad_shapes);
+      if (fabs(OCpar.grad_level-1)<1e-3) { /* original GRAPE ala Khaneja */
+    	  cd[0]='\0';
+    	  for (i=1; i<=sim->ss->nchan; i++) {
+    		  for (j=1; j<=Nsh; j++) {
+    			  if (OCpar.grad_shapes[j] == mask[i]) {
+    				  sprintf(buf2," I%dC%d",j,i);
+    				  strcat(cd,buf2);
+    				  Nch++;
+    				  break;
+    			  }
+    		  }
     	  }
-      }
+    	  /* check if there is any gradient to calculate */
+    	  if (Nch==0) {
+    		  /* no, then do usual things */
+    		  DEBUGPRINT("pulse_shaped - no variable shapes, just creates propagator\n");
+    		  _pulse_shaped(sim,wsp,Nelem, mask, steptime);
+    	  } else {
+    		  /* yes, check for type of optimization */
+    		  DEBUGPRINT("pulse_shaped created code '%s'\n",cd);
+    		  if ( OCpar.gradmodeprop == 1 ) {
+    			  /* do stuff for propagator optimization */
+    			  _pulse_shapedOCprops(sim,wsp,cd,Nch,Nelem,mask,steptime);
+    		  } else {
+    			  /* do stuff for state to state optimization */
+    			  _pulse_shapedOC(sim,wsp,cd,Nch,Nelem,mask,steptime);
+    		  }
+    	  }
+      } else { /* GRAPE with advanced gradients */
+    	  OCchanmap = int_vector(Nsh);
+    	  for (i=1; i<=Nsh; i++) {
+    		  OCchanmap[i] = -1;
+    		  //printf("grad_shapes[%d] = %d \n",i,OCpar.grad_shapes[i]);
+    		  for (j=1; j<=sim->ss->nchan; j++) {
+        		  //printf("\t mask[%d] = %d \n",j,mask[j]);
+    			  if (OCpar.grad_shapes[i] == mask[j]) {
+    				  OCchanmap[i] = j;
+    				  Nch++;
+        			  break;
+    			  }
+    		  }
+    		  //printf("\t OCchanmap[%d] = %d \n",i,OCchanmap[i]);
+    	  }
+    	  if (Nch == 0) {
+    		  _pulse_shaped(sim,wsp,Nelem, mask, steptime);
+    	  } else {
+    		  if ( OCpar.gradmodeprop == 1 ) {
+    			  /* do stuff for propagator optimization */
+    			  _pulse_shapedOCprops_2(sim,wsp,Nelem,OCchanmap,mask,steptime);
+    		  } else {
+    			  /* do stuff for state to state optimization */
+    			  _pulse_shapedOC_2(sim,wsp,Nelem,OCchanmap,mask,steptime);
+    		  }
 
+    	  }
+    	  free_int_vector(OCchanmap);
+      }
    } else {
       /* do just actual pulsing */
       _pulse_shaped(sim,wsp,Nelem, mask, steptime);

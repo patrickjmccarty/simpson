@@ -2,6 +2,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+
+#ifdef INTEL_MKL
+#include "mkl.h"
+#include "mkl_spblas.h"
+#elif defined(__APPLE__)
+#include <Accelerate/Accelerate.h>
+#elif defined(GSL)
+#include <gsl/gsl_cblas.h>
+#else
+#include "cblas.h"
+#endif
+
+
 #include "defs.h"
 #include "cm.h"
 #include "blockdiag.h"
@@ -13,6 +26,8 @@
 #include "iodata.h"
 #include "tclutil.h"
 #include "B0inhom.h"
+#include "ham.h"
+#include "lbfgs.h"
 
 /* global variable holding all OC parameters */
 OCoptPars OCpar;
@@ -22,14 +37,14 @@ OCoptPars OCpar;
  ****/ 
 void OCpar_initialize(void) 
 {
-  OCpar.gradmode=0;
-  OCpar.gradmodeprop=0;
-  OCpar.var_shapes=NULL;
-  OCpar.var_shapes_min=NULL;
-  OCpar.var_shapes_max=NULL;
-  OCpar.var_shapes_rmsmax=NULL;
-  OCpar.grad_shapes=NULL;
-  OCpar.isinit=1;
+	OCpar.gradmode=0;
+	OCpar.gradmodeprop=0;
+	OCpar.var_shapes=NULL;
+	OCpar.var_shapes_min=NULL;
+	OCpar.var_shapes_max=NULL;
+	OCpar.var_shapes_rmsmax=NULL;
+	OCpar.grad_shapes=NULL;
+	OCpar.isinit=1;
 }
 
 /****
@@ -266,11 +281,383 @@ void lambda_filterOC( Sim_wsp *wsp, int num, mat_complx *lam)
   cm_filter(lam, wsp->OC_props[num]->m);
 }
 
+/****
+ * creates complex Ham including interactions and rf (with phase)
+ ****/
+void ham_hamrf_complex(mat_complx *cH, Sim_info *sim, Sim_wsp *wsp)
+{
+	assert(cH != NULL);
+	assert(cH->row == wsp->ham_blk->dim);
+	assert(cH->col == cH->row);
+	assert(cH->type == MAT_DENSE);
+	assert(wsp->ham_blk->Nblocks == 1); /* no block_diag */
+	assert(wsp->chan_Ix[1]->type == MAT_DENSE);
+	assert(wsp->chan_Iy[1]->type == MAT_DENSE);
+
+	int i;
+	int dim = cH->row;
+	int dim2 = dim*dim;
+	cm_zero(cH);
+	/* add interactions */
+	mat_double *smx = wsp->ham_blk->m;
+	switch (smx->type) {
+		case MAT_DENSE:
+			cblas_dcopy(dim2,smx->data,1,(double*)(cH->data),2);
+			break;
+		case MAT_DENSE_DIAG:
+			cblas_dcopy(dim,smx->data,1,(double*)(cH->data),2*(dim+1));
+			//printf("H_1_1 = %g (%g, %g)\n",smx->data[0],cH->data[0].re,cH->data[0].im);
+			break;
+		case MAT_SPARSE:
+		default:
+			fprintf(stderr,"Error: ham_hamrf_complex - unsupported matrix type (%d)\n",smx->type);
+			exit(1);
+	}
+	/* add rf fields */
+	double c, s;
+	for (i=1; i<=sim->ss->nchan; i++) {
+  	  if (fabs(wsp->rfv[i]) > TINY) {
+  		  c = wsp->rfv[i]*cos(wsp->phv[i]);
+  		  s = wsp->rfv[i]*sin(wsp->phv[i]);
+  		  cblas_daxpy(dim2,c,wsp->chan_Ix[i]->data,1,(double*)(cH->data),2);
+  		  cblas_daxpy(dim2,s,wsp->chan_Iy[i]->data,1,(double*)(cH->data)+1,2);
+  	  }
+	}
+}
+
+/****
+ * fills auxiliary complex matrix with complex Ham including interactions
+ *     and rf (with phase)
+ *     For exact derivatives via exponential
+ ****/
+void ham_hamrf_complex_2(mat_complx *cH, int chan, int ph, Sim_info *sim, Sim_wsp *wsp)
+{
+	assert(cH != NULL);
+	assert(cH->row == 2*wsp->ham_blk->dim);
+	assert(cH->col == cH->row);
+	assert(cH->type == MAT_DENSE);
+	assert(wsp->ham_blk->Nblocks == 1); /* no block_diag */
+	assert(wsp->chan_Ix[chan]->type == MAT_DENSE);
+	assert(wsp->chan_Iy[chan]->type == MAT_DENSE);
+
+	int i,j;
+	int dim = cH->row;
+	int dim2 = dim*dim;
+	cm_zero(cH);
+	/* add interactions to first block */
+	mat_double *smx = wsp->ham_blk->m;
+	switch (smx->type) {
+		case MAT_DENSE:
+			for (i=0; i<dim; i++) {
+				cblas_dcopy(dim,smx->data+i*dim,1,(double*)(cH->data)+2*2*dim*i,2);
+			}
+			break;
+		case MAT_DENSE_DIAG:
+			cblas_dcopy(dim,smx->data,1,(double*)(cH->data),2*2*dim+2);
+			break;
+		case MAT_SPARSE:
+		default:
+			fprintf(stderr,"Error: ham_hamrf_complex_2 - unsupported matrix type (%d)\n",smx->type);
+			exit(1);
+	}
+	/* add rf fields to first block */
+	double c, s;
+	for (i=1; i<=sim->ss->nchan; i++) {
+  	  if (fabs(wsp->rfv[i]) > TINY) {
+  		  c = wsp->rfv[i]*cos(wsp->phv[i]);
+  		  s = wsp->rfv[i]*sin(wsp->phv[i]);
+  		  for (j=0; j<dim; j++) {
+  			  cblas_daxpy(dim,c,wsp->chan_Ix[i]->data+j*dim,1,(double*)(cH->data)+2*2*dim*j,2);
+  			  cblas_daxpy(dim,s,wsp->chan_Iy[i]->data+j*dim,1,(double*)(cH->data)+2*2*dim*j+1,2);
+  		  }
+  	  }
+	}
+	/* copy first block to the second, add channel for derivative */
+	for (i=0; i<dim; i++) {
+		cblas_zcopy(dim, cH->data+2*dim*i, 1, cH->data+2*dim2+dim+2*dim*i,1);
+		switch (ph) {
+		case 1:
+			cblas_dcopy(dim,wsp->chan_Ix[chan]->data,1,(double*)(cH->data)+2*2*dim2+i*2*2*dim,2);
+			break;
+		case 2:
+			cblas_dcopy(dim,wsp->chan_Iy[chan]->data,1,(double*)(cH->data)+2*2*dim2+i*2*2*dim+1,2);
+			break;
+		default:
+			fprintf(stderr,"Error: ham_hamrf_complex_2 - invalid argument ph (%d)\n",ph);
+			exit(1);
+		}
+	}
+}
+
+void OC_commutator(mat_complx *cH,mat_complx *kom,int iter,mat_complx *cdum, double *tol)
+{
+	complx *p1, *p2, *p3, *p4, *pstop;
+	int dim = cH->row;
+	int dim2 = dim*dim;
+	int sign = -1;
+
+	cblas_zhemm(CblasColMajor,CblasLeft,CblasUpper,dim,dim,&Cunit,cH->data,dim,kom->data,dim,&Cnull,cdum->data,dim);
+	//cm_print(cdum,"cH*kom");
+
+	p1 = kom->data; /* result */
+	p2 = p3 = cdum->data;
+	pstop = kom->data + dim2;
+	p4 = cdum->data + dim2;
+	while (--iter > 0) sign *= -1;
+	*tol = -1000;
+	while (p1<pstop) {
+		p1->re = p2->re + sign*p3->re;
+		p1->im = p2->im - sign*p3->im;
+		//printf("\t p2 = %g, %g, p3 = %g, %g\n",p2->re,p2->im,p3->re,p3->im);
+		if (fabs(p1->re)+fabs(p1->im) > *tol) *tol = fabs(p1->re)+fabs(p1->im);
+		p1++;
+		p2++;
+		p3 += dim;
+		if (p3>=p4) p3 = p3 - dim2 + 1;
+	}
+}
+
+/****
+ * NOT FINISHED
+ ****/
+void _pulse_shapedOC_2(Sim_info *sim, Sim_wsp *wsp, int Nelem, int *OCchanmap, int *mask, double duration)
+{
+	int i, j, k, l, n;
+	double dt, dt_us;
+	int dim = wsp->ham_blk->dim;
+	int dim2 = dim*dim;
+	int Nsh = LEN(OCchanmap);
+	mat_complx *cH = NULL, *kom = NULL, *cdum = NULL;
+	complx *cvec = NULL;
+	mat_complx *gr = complx_matrix(dim,dim,MAT_DENSE,0,wsp->ham_blk->basis);
+
+	assert(wsp->dU != NULL);
+	assert(wsp->dU->Nblocks == 1); /* no block_diag */
+
+	if (wsp->Uisunit != 1) {
+		/* there is some pending propagator, store it but make no gradient */
+		incr_OCmx_pos(wsp);
+		store_OCprop(wsp);
+		store_OCdens(wsp); /* store sigma from previous step */
+		_evolve_with_prop(sim,wsp); /* get sigma ready for next store */
+		_reset_prop(sim,wsp);
+	}
+
+	int iter;
+	int maxiter = -1; /* exact gradients calculated via exponential */
+	double tol;
+	double maxtol = 1e-6;
+	if (fabs(OCpar.grad_level)<0.5) {
+		/* gradient with higher order corrections up to grad_level accuracy */
+		maxiter = 10;
+		maxtol = fabs(OCpar.grad_level);
+	} else if (OCpar.grad_level > 1.5){
+		/* gradient with higher order corrections up to grad_level order */
+		maxiter = (int)round(OCpar.grad_level);
+		maxtol = 1e-10;
+	}
+	//printf("pulse_shaped_OC: maxiter = %d, tol = %g\n",maxiter,maxtol);
+
+	/* do pulsing, gradients, evolving, storing the results */
+	n = (int)ceil(duration/wsp->dtmax);
+	if (n < 1) n = 1;
+	dt_us = duration/(double)n;
+	dt = dt_us*1.0e-6;
+	//printf("_pulse_shapedOC_2 duration of %f us split into %d steps of %f us\n",duration,n,dt*1.0e+6);
+	for (j=1; j<=Nelem; j++) {
+		for (i=1; i<=sim->ss->nchan; i++) {
+			if (mask[i] == -1) {
+				_rf(wsp,i,0.0);
+				_ph(wsp,i,0.0);
+			} else {
+				_rf(wsp,i,RFshapes[mask[i]][j].ampl);
+				_ph(wsp,i,RFshapes[mask[i]][j].phase);
+			}
+		}
+		_setrfprop(sim,wsp);
+		incr_OCmx_pos(wsp);
+		/* like _pulse_simple */
+		for (i=1;i<=n;i++) {
+			ham_hamilton(sim,wsp);
+			//blk_dm_print(wsp->ham_blk,"Ham int real");
+			if (maxiter<0) {
+				/* exact gradients calculated via exponential */
+				if (cH == NULL) {
+					cH = complx_matrix(wsp->ham_blk->dim*2,wsp->ham_blk->dim*2,MAT_DENSE,0,wsp->ham_blk->basis);
+					cdum = complx_matrix(wsp->ham_blk->dim*2,wsp->ham_blk->dim*2,MAT_DENSE,0,wsp->ham_blk->basis);
+					cvec = complx_vector(2*dim);
+				}
+				for (k=1; k<=Nsh; k++) { /* loop over all gradshapes */
+					if (OCchanmap[k] < 0) { /* this shape is not active */
+						if (wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)] != NULL) {
+							free_complx_matrix(wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)]);
+							wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)] = NULL;
+						}
+						if (wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1] != NULL) {
+							free_complx_matrix(wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1]);
+							wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1] = NULL;
+						}
+						continue;
+					}
+					if (wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)] == NULL) {
+						wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)] = complx_matrix(dim,dim,MAT_DENSE,0,wsp->ham_blk->basis);
+					}
+					if (wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1] == NULL) {
+						wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1] = complx_matrix(dim,dim,MAT_DENSE,0,wsp->ham_blk->basis);
+					}
+					/* x channel */
+					ham_hamrf_complex_2(cH,k,1,sim,wsp);
+					fprintf(stderr,"Error: gradient via exponential not finished.\n");
+					exit(1);
+					cm_diag(cH,cvec,cdum); /* problem jak expm obecne komplexni matice... */
+					cm_zero(cH);
+					for (l=0; l<2*dim; l++) {
+						double f = exp(cvec[l+1].im*dt);
+						cH->data[l].re = f*cos(-cvec[l+1].re*dt);
+						cH->data[l].im = f*sin(-cvec[l+1].re*dt);
+					}
+					simtrans(cH,cdum); /* tihle nemusi platit, obecne potrebuju inverzi matice, ne adjoint */
+					fprintf(stderr,"Error: _pulse_shapedOC_2 - not implemented exact grads via expm\n");
+					exit(1);
+					/* y channel */
+					/* buffery s derivacema vynasobit  wsp->dU, krome i==1 */
+					/* do bufferu pricist grad_i * wsp->U */
+				}
+			} else {
+				double scl;
+				complx cscl;
+				/* gradients improved with higher order terms */
+				if (cH == NULL) {
+					cH = complx_matrix(dim,dim,MAT_DENSE,0,wsp->ham_blk->basis);
+					kom = complx_matrix(dim,dim,MAT_DENSE,0,wsp->ham_blk->basis);
+					cdum = complx_matrix(dim,dim,MAT_DENSE,0,wsp->ham_blk->basis);
+				}
+				ham_hamrf_complex(cH, sim, wsp);
+				//cm_print(cH, "Hamiltonian");
+				blk_dm_multod(wsp->ham_blk,wsp->sumHrf,1.0);
+				//blk_dm_print(wsp->ham_blk,"Ham total real");
+				blk_cm_unit(wsp->dU);
+				blk_prop_real(wsp->dU,wsp->ham_blk,dt,sim->propmethod);
+				blk_simtrans_zrot2(wsp->dU,wsp->sumUph);
+				//blk_cm_print(wsp->dU,"Propagator");
+				for (k=1; k<=Nsh; k++) { /* loop over all gradshapes */
+					//printf("OCchanmap[%d] = %d\n",k,OCchanmap[k]);
+					if (OCchanmap[k] < 0) { /* this shape is not active */
+						if (wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)] != NULL) {
+							free_complx_matrix(wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)]);
+							wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)] = NULL;
+						}
+						if (wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1] != NULL) {
+							free_complx_matrix(wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1]);
+							wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1] = NULL;
+						}
+						continue;
+					}
+					if (wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)] == NULL) {
+						wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)] = complx_matrix(dim,dim,MAT_DENSE,0,wsp->ham_blk->basis);
+					}
+					if (wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1] == NULL) {
+						wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1] = complx_matrix(dim,dim,MAT_DENSE,0,wsp->ham_blk->basis);
+					}
+					/* x channel */
+					cm_zero(gr);
+					cblas_daxpy(dim2,-1.0,wsp->chan_Ix[OCchanmap[k]]->data,1,(double*)(gr->data)+1,2); /* first order */
+					cm_zero(kom);
+					cblas_dcopy(dim2,wsp->chan_Ix[OCchanmap[k]]->data,1,(double*)(kom->data),2);
+					//cm_print(kom,"channel Ix");
+					iter=1;
+					tol = 1000;
+					scl = dt/2.0;
+					while (iter < maxiter && tol > maxtol) {
+						//printf("Iter %d, tol %g\n============\n",iter,tol);
+						//cm_print(gr,"gr matrix");
+						OC_commutator(cH,kom,iter,cdum, &tol);
+						//cm_print(kom,"komutator");
+						switch (iter % 4) {
+						case 0: cscl.re = 0; cscl.im = -scl;
+							break;
+						case 1: cscl.re = scl; cscl.im = 0;
+							break;
+						case 2: cscl.re = 0; cscl.im = scl;
+							break;
+						case 3: cscl.re = -scl; cscl.im = 0;
+							break;
+						}
+						cblas_zaxpy(dim2,&cscl, kom->data,1,gr->data,1);
+						tol *= scl;
+						scl *= (dt/((double)(iter)+2.0));
+						iter++;
+					}
+					cm_multo_rev(gr,wsp->dU->m); /* gr is done here */
+					//cm_print(gr,"READY grad");
+					//exit(1);
+					if (i==1) {
+						cm_copy(wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)],gr);
+					} else {
+						cm_multo_rev(wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)],wsp->dU->m);
+						cblas_zgemm(CblasColMajor,CblasNoTrans,CblasNoTrans,dim,dim,dim,&Cunit,gr->data,dim,wsp->U->m->data,dim,&Cunit,wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)]->data,dim);
+					}
+					/* y channel */
+					cm_zero(gr);
+					cblas_daxpy(dim2,1.0,wsp->chan_Iy[OCchanmap[k]]->data,1,(double*)(gr->data),2); /* first order */
+					cm_zero(kom);
+					cblas_dcopy(dim2,wsp->chan_Iy[OCchanmap[k]]->data,1,(double*)(kom->data)+1,2);
+					//cm_print(kom,"channel Iy");
+					iter=1;
+					tol = 1000;
+					scl = dt/2.0;
+					while (iter < maxiter && tol > maxtol) {
+						//printf("Iter %d, tol %g\n============\n",iter,tol);
+						//cm_print(gr,"gr matrix");
+						OC_commutator(cH,kom,iter,cdum, &tol);
+						//cm_print(kom,"komutator");
+						switch (iter % 4) {
+						case 0: cscl.re = 0; cscl.im = -scl;
+							break;
+						case 1: cscl.re = scl; cscl.im = 0;
+							break;
+						case 2: cscl.re = 0; cscl.im = scl;
+							break;
+						case 3: cscl.re = -scl; cscl.im = 0;
+							break;
+						}
+						cblas_zaxpy(dim2,&cscl, kom->data,1,gr->data,1);
+						tol *= scl;
+						scl *= (dt/((double)(iter)+2.0));
+						iter++;
+					}
+					cm_multo_rev(gr,wsp->dU->m); /* gr is done here */
+					//cm_print(gr,"READY grad");
+					//exit(1);
+					if (i==1) {
+						cm_copy(wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1],gr);
+					} else {
+						cm_multo_rev(wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1],wsp->dU->m);
+						cblas_zgemm(CblasColMajor,CblasNoTrans,CblasNoTrans,dim,dim,dim,&Cunit,gr->data,dim,wsp->U->m->data,dim,&Cunit,wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1]->data,dim);
+					}
+				}
+			}
+			/* update kumulativni propagator ve wsp->U */
+			update_propagator(wsp->U, wsp->dU, sim, wsp);
+			wsp->t += dt_us;
+		} /* end for i over maxdt steps inside pulse step */
+		store_OCprop(wsp);
+		store_OCdens(wsp); /* sigma of previous step */
+		_evolve_with_prop(sim,wsp); /* get sigma ready for the next step */
+		_reset_prop(sim,wsp);
+	} /* end for j over Nelem */
+
+	if (cH != NULL) free_complx_matrix(cH);
+	if (kom != NULL) free_complx_matrix(kom);
+	if (cdum != NULL) free_complx_matrix(cdum);
+	free_complx_matrix(gr);
+}
 
 /****
  * helper function for pulse_shaped in gradient mode and state to state optimization
  *        (here step by step propagators are saved together with step-evolved
  *         density matrices)
+ * Original GRAPE ala Khaneja
  ****/
  void _pulse_shapedOC(Sim_info *sim, Sim_wsp *wsp, char *code, int Nch, int Nelem, int *mask, double steptime)
 {
@@ -297,8 +684,8 @@ void lambda_filterOC( Sim_wsp *wsp, int num, mat_complx *lam)
 	        _ph(wsp,i,RFshapes[mask[i]][j].phase);
          }
       }
-      _pulse(sim,wsp,steptime);
       incr_OCmx_pos(wsp);
+      _pulse(sim,wsp,steptime);
       store_OCprop(wsp);
       _evolve_with_prop(sim,wsp);
       store_OCdens(wsp);
@@ -313,6 +700,11 @@ void lambda_filterOC( Sim_wsp *wsp, int num, mat_complx *lam)
 
 }
 
+void _pulse_shapedOCprops_2(Sim_info *sim, Sim_wsp *wsp, int Nelem, int *OCchanmap, int *mask, double duration)
+{
+	fprintf(stderr, "Error: _pulse_shapedOCprops_2 not implemented.\n");
+	exit(1);
+}
 
 /****
  * helper function for pulse_shaped in gradient mode and propagator optimization
@@ -479,13 +871,13 @@ void _pulse_and_zgrad_shapedOCprops(Sim_info *sim, Sim_wsp *wsp, char *code, int
  ****/
  void gradOC_hermit(Sim_info *sim, Sim_wsp *wsp)
 {
-  int i,j,k,Nelem,Nch,idx,chan,dum,N;
+  int i,j,k,Nelem,Nch,idx,chan,dum;
   mat_complx *lam, *cmdum=NULL;
   complx cc;
   int *gridx, *chnl, *slt;
   char code, *dumstr, mxcd[128];
   
-  N = sim->matdim;
+  //N = sim->matdim;
   /* printf("in gradOC_hermit\n"); */
 
   /* check if there is pending propagator and save and evolve with it */
@@ -516,7 +908,7 @@ void _pulse_and_zgrad_shapedOCprops(Sim_info *sim, Sim_wsp *wsp, char *code, int
   
   /* final lambda is */
   lam = cm_dup(wsp->fdetect);
-  
+
   i = wsp->OC_mxpos;
   while (i>0) {
 	  strcpy(mxcd,wsp->OC_mxcode[i]);
@@ -612,20 +1004,99 @@ void _pulse_and_zgrad_shapedOCprops(Sim_info *sim, Sim_wsp *wsp, char *code, int
   free_complx_matrix(lam);
   free_int_vector(gridx);
 }
+/*****
+ * function calculating gradients for Hermitian state to state transfer
+ *   --> with advanced gradients
+ *   NOTE: does not allow usage of filter command !!!
+ *****/
+void gradOC_hermit_2(Sim_info *sim, Sim_wsp *wsp)
+{
+  int i,j,Nsh,dum,dim;
+  mat_complx *lam, *cm1, *cm2;
+  complx cc;
+  int *gridx;
+
+
+  /* check if there is pending propagator and save and evolve with it */
+  if ( wsp->Uisunit != 1) {
+      incr_OCmx_pos(wsp);
+      store_OCprop(wsp);
+      store_OCdens(wsp); /* sigma of previous step */
+      _evolve_with_prop(sim,wsp); /* next step probably will not happen */
+      _reset_prop(sim,wsp);
+   }
+
+  /* initialize info where to store gradients */
+  Nsh = OCpar.grad_shapes[0];
+  gridx = int_vector(Nsh);
+  dum=0;
+  for (j=1;j<=Nsh;j++) {
+     dum += RFshapes_len(OCpar.grad_shapes[j]);
+     gridx[j]=dum;
+     //printf("\t gridx[%d] = %d\n",j, dum);
+  }
+  /* check the size of fid */
+  if ( dum > LEN(wsp->fid) ) {
+    fprintf(stderr,"error: gradient function detected overflow in fid points\n");
+    exit(1);
+  }
+  /* optimistically set this and hope all in this function works... */
+  wsp->curr_nsig = dum;
+
+  /* final lambda is */
+  lam = cm_dup(wsp->fdetect);
+  dim = lam->row;
+  cm1 = complx_matrix(dim,dim,MAT_DENSE,0,lam->basis);
+  cm2 = complx_matrix(dim,dim,MAT_DENSE,0,lam->basis);
+
+  i = wsp->OC_mxpos;
+  while (i>0) {
+	  //cm_print(lam,"lam");
+	  for (j=1; j<=Nsh; j++) {
+		  if (wsp->OC_deriv[i][2*(j-1)] == NULL) continue;
+		  cblas_zgemm(CblasColMajor,CblasNoTrans,CblasConjTrans,dim,dim,dim,&Cunit,wsp->OC_dens[i]->data,dim,wsp->OC_props[i]->m->data,dim,&Cnull,cm1->data,dim);
+		  //cm_print(wsp->OC_dens[i],"rho");
+		  //cm_print(wsp->OC_props[i]->m,"prop Uk");
+		  //cm_print(cm1,"cm1");
+		  /* x channel */
+		  cblas_zgemm(CblasColMajor,CblasNoTrans,CblasNoTrans,dim,dim,dim,&Cunit,wsp->OC_deriv[i][2*(j-1)]->data,dim,cm1->data,dim,&Cnull,cm2->data,dim);
+		  //cm_print(wsp->OC_deriv[i][2*(j-1)],"deriv Uk");
+		  //cm_print(cm2,"cm2");
+		  cc = cm_trace(lam,cm2);
+		  //printf("X %d shape %d: cc = %g, %g\n",i,j,cc.re, cc.im);
+		  wsp->fid[gridx[j]].re += 2.0*cc.re;
+		  /* y channel */
+		  cblas_zgemm(CblasColMajor,CblasNoTrans,CblasNoTrans,dim,dim,dim,&Cunit,wsp->OC_deriv[i][2*(j-1)+1]->data,dim,cm1->data,dim,&Cnull,cm2->data,dim);
+		  cc = cm_trace(lam,cm2);
+		  //printf("Y %d shape %d: cc = %g, %g\n",i,j,cc.re, cc.im);
+		  wsp->fid[gridx[j]].im += 2.0*cc.re;
+		  (gridx[j])--;
+	  }
+	  blk_simtrans_adj(lam,wsp->OC_props[i],sim);
+	  i--;
+  } /*end while */
+
+
+  free_complx_matrix(cm1);
+  free_complx_matrix(cm2);
+  free_complx_matrix(lam);
+  free_int_vector(gridx);
+}
+
 
 /****
  * function calculating gradients for non-Hermitian state to state transfer
  ****/
  void gradOC_nonhermit(Sim_info *sim, Sim_wsp *wsp)
 {
-  int i,j,k,Nelem,Nch,idx,chan,dum,N;
+  int i,j,k,Nelem,Nch,idx,chan,dum;
   mat_complx *lam, *tmpM=NULL, *tmpMM=NULL;
   complx cc, cc1;
   int *gridx, *chnl, *slt;
   char code, *dumstr, mxcd[128];
   
   /* printf("in gradOC_nonhermit\n"); */
-  N = sim->matdim;
+  //N = sim->matdim;
    
   /* check if there is pending propagator and save and evolve with it */
   if ( wsp->Uisunit != 1) {
@@ -1530,6 +2001,131 @@ void free_grad_fid(int gr_slot, Tcl_Interp *interp)
  
 }
 
+/*****
+ * 'evaluate' function for L-BFGS, returns target_function and gradient
+ *****/
+static lbfgsfloatval_t lbfgs_evaluate(void *interp,
+	const lbfgsfloatval_t *x,
+	lbfgsfloatval_t *g,
+	const int n,
+	const lbfgsfloatval_t step)
+{
+	lbfgsfloatval_t fx;
+	int i, j, k, N;
+	extern FD** fd;
+
+	/* copy variables into shapes */
+    k = 0;
+    for (i=1; i<=OCpar.var_shapes[0]; i++) {
+       N = RFshapes_len(OCpar.var_shapes[i]);
+       for (j=1; j<=N; j++) {
+    	   double re = x[k++];
+    	   double im = x[k++];
+    	   RFshapes[OCpar.var_shapes[i]][j].ampl = sqrt(re*re+im*im);
+    	   RFshapes[OCpar.var_shapes[i]][j].phase = RAD2DEG*atan2(im,re);
+       }
+    }
+    /* evaluate target function */
+    fx = -evaluate_target_function((Tcl_Interp*)interp);
+    //printf("ev: tf = %g\n",fx);
+	/* get gradients */
+    N = evaluate_gradient((Tcl_Interp*)interp);
+    //printf("ev: grads done\n");
+    /* fill gradients */
+    i = 0;
+    for (j=1; j<=fd[N]->np; j++) {
+    	g[i++] = -(fd[N]->data)[j].re;
+    	g[i++] = -(fd[N]->data)[j].im;
+    	/* gradient calculated for maximizing, here we minimize */
+    }
+    free_grad_fid(N,(Tcl_Interp*)interp);
+    //printf("ev: grads filled\n\n");
+
+	return fx;
+}
+
+/*****
+ * 'progress' function for L-BFGS: output, temporary store, early termination, ...
+ *****/
+static int lbfgs_progress(void *interp,
+	const lbfgsfloatval_t *x,
+	const lbfgsfloatval_t *g,
+	const lbfgsfloatval_t fx,
+	const lbfgsfloatval_t xnorm,
+	const lbfgsfloatval_t gnorm,
+	const lbfgsfloatval_t step,
+    int n,
+    int k,
+    int ls
+    )
+{
+    printf("\tIteration %d: ", k);
+    printf("  tf = %.10f  (step = %f)\n", -fx, step);
+
+    if (OCpar.verb) {
+    	printf("\t\tNumber of evaluations   %d\n",ls);
+    	printf("\t\tNorm of variable change %.10f\n",xnorm);
+    	printf("\t\tNorm of gradients       %.10f\n",gnorm);
+    }
+    /* store sequences every nreport steps */
+    if ( (k % OCpar.nreport) < 1 ) {
+       printf("   Storing data for iteration %d\n",k);
+       store_OCshapes((Tcl_Interp*)interp);
+    }
+
+    return 0;
+}
+
+/******
+ * optimization using L-BFGS
+ ******/
+double OptimizeLBFGS(Tcl_Interp* interp)
+{
+    lbfgsfloatval_t fx;
+    lbfgsfloatval_t *x;
+    lbfgs_parameter_t param;
+    int i, j, k, N, ret;
+    int Nshapes = OCpar.var_shapes[0];
+    int Nvars = 0;
+
+    /* count variables */
+    for (i=1; i<=Nshapes; i++) {
+       N = RFshapes_len(OCpar.var_shapes[i]);
+       Nvars += N;
+    }
+    Nvars *= 2;
+    /* initialize vector of variables x - rf Ix, rf Iy */
+    x = lbfgs_malloc(Nvars);
+    k = 0;
+    for (i=1; i<=Nshapes; i++) {
+       N = RFshapes_len(OCpar.var_shapes[i]);
+       for (j=1; j<=N; j++) {
+    	   double am = RFshapes[OCpar.var_shapes[i]][j].ampl;
+    	   double ph = RFshapes[OCpar.var_shapes[i]][j].phase*DEG2RAD;
+    	   x[k++] = am*cos(ph);
+    	   x[k++] = am*sin(ph);
+       }
+    }
+    /* Initialize the parameters for the L-BFGS optimization. */
+    lbfgs_parameter_init(&param);
+    //param.epsilon = OCpar.eps; /* convergence criterion */
+    param.max_iterations = OCpar.nIterations;
+    /*param.linesearch = LBFGS_LINESEARCH_BACKTRACKING;*/
+
+    fx = evaluate_target_function(interp);
+    printf("     Initial target function: %.10f \n", fx);
+
+    /* do optimization */
+    ret = lbfgs(Nvars, x, &fx, lbfgs_evaluate, lbfgs_progress, (void*)interp, &param);
+
+    /* Report the result. */
+    printf("\nL-BFGS optimization terminated with status message:\n\t'%s'\n", lbfgs_retcode(ret));
+    printf("Terminal target function value: %.10f\n\n", -fx);
+
+    lbfgs_free(x);
+
+    return (double)fx;
+}
 
 /****
  * ZT: implementation of oc_optimize
@@ -1539,12 +2135,12 @@ void free_grad_fid(int gr_slot, Tcl_Interp *interp)
   double tfval, dumfloat;
   Tcl_Obj* objptr;
   int i, slot, ndim, nsh, ish;
-  char rxbuf[32];
+  char strbuf[32];
 
   /* disable when relaxation is ON */
-  TclGetString(interp,rxbuf,"par","relax",0,"off");
-  DEBUGPRINT("OC detects: relax is %s\n",rxbuf);
-  if (!strncmp(rxbuf,"on",2)) {
+  TclGetString(interp,strbuf,"par","relax",0,"off");
+  DEBUGPRINT("OC detects: relax is %s\n",strbuf);
+  if (!strncmp(strbuf,"on",2)) {
      fprintf(stderr,"oc_optimize error: relaxation not supported during optimization.\n");
      exit(1);
   }
@@ -1566,6 +2162,8 @@ void free_grad_fid(int gr_slot, Tcl_Interp *interp)
   }
   if (nsh == 0)
      return TclError(interp,"oc_optimize has not detected any variable shape among arguments!");
+  if (nsh > MAXOCSHAPES)
+     return TclError(interp,"oc_optimize: too many shapes, maximum is %d.",MAXOCSHAPES);
      
   ndim = 0;
   ish = 0;
@@ -1750,7 +2348,24 @@ void free_grad_fid(int gr_slot, Tcl_Interp *interp)
        printf("Warning! Could'n read par(oc_max_brent_eval), using default value %d\n",OCpar.max_brent_eval);
      } 
   }
- 
+  objptr = Tcl_GetVar2Ex( interp, "par", "oc_grad_level", TCL_GLOBAL_ONLY);
+  if (!objptr) {
+     OCpar.grad_level = 1;
+  } else {
+     if ( Tcl_GetDoubleFromObj( interp,objptr,&OCpar.grad_level) != TCL_OK ) {
+       OCpar.grad_level = 1;
+       printf("Warning! Could'n read par(oc_grad_level), using default value %g\n",OCpar.grad_level);
+     }
+  }
+  TclGetString(interp,strbuf,"par","oc_method",0,"CG");
+  if (!strncmp(strbuf,"CG",2)) {
+	  OCpar.method = 1;
+  } else if (!strncmp(strbuf,"L-BFGS",6)) {
+	  OCpar.method = 0;
+  } else {
+     fprintf(stderr,"oc_optimize error: invalid oc_method, can be 'CG' or 'L-BFGS'\n");
+     exit(1);
+  }
  
   printf("Number of variables is %d\n",OCpar.ndim);   
   printf("Global tolerance on target function is %g\n",OCpar.eps);
@@ -1761,10 +2376,16 @@ void free_grad_fid(int gr_slot, Tcl_Interp *interp)
   printf("Tolerance for line-search (Brent) is %g\n",OCpar.tol);
   printf("Line-search will terminate after reaching %d evaluations\n",OCpar.max_brent_eval);
   printf("Initial step for bracketing minimum is %g\n",OCpar.mnbkstep);
-  printf("Bracketing will fail after conducting %d evaluations\n\n",OCpar.max_brack_eval);
+  printf("Bracketing will fail after conducting %d evaluations\n",OCpar.max_brack_eval);
+  printf("Gradient level parameter is %g\n",OCpar.grad_level);
+  printf("Optimization method is '%s'\n\n",OCpar.method ? "CG" : "L-BFGS");
  
- 
-  tfval = OptimizeCG(interp);
+
+  if (OCpar.method == 1) {
+	  tfval = OptimizeCG(interp);
+  } else {
+	  tfval = OptimizeLBFGS(interp);
+  }
  
   TclSetResult(interp,"%lf",tfval);
  
@@ -2011,7 +2632,11 @@ void acqOC_prop(Sim_info *sim, Sim_wsp *wsp, int Ud)
   /* test whether to calculate target function or gradient */
   if (OCpar.gradmode) {
      /* printf("do gradients\n"); */
-     gradOC_hermit(sim,wsp);
+      if (fabs(OCpar.grad_level-1)<1e-3) { /* original GRAPE ala Khaneja */
+    	  gradOC_hermit(sim,wsp);
+      } else { /* GRAPE with advanced gradients */
+    	  gradOC_hermit_2(sim,wsp);
+      }
   } else {
      /* printf("do target function\n"); */
      acqOC_hermit(sim,wsp);
