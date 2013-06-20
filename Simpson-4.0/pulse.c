@@ -96,6 +96,7 @@ void direct_propagate(Sim_info *sim, Sim_wsp *wsp)
   wsp->tpropstart = wsp->t = wsp->tstart;
   wsp->curr_nsig = 0;
 
+  //printf("direct_propagate wsp->tstart = %g\n",wsp->tstart);
   DEBUGPRINT("direct_propagate -> calling pulseq '%s'\n",sim->pulsename);
   //printf("direct_propagate - interp pointer %p\n",wsp->interp);
   //Tcl_Eval(wsp->interp,"puts \"NAZDAREK\"");

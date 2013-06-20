@@ -796,35 +796,45 @@ void direct_acqblock_freq(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp 
 
 void gcompute_acqblock(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp *wsp)
 {
-	double t0;
-	int q = wsp->Uisunit;
+	double t0 = wsp->t;
+	int q = 0;
+
+	if ( wsp->Uisunit != 1 || wsp->tstart < t0 ) {
+		q = 1; /* there was some event changing density matrix */
+	}
 
 	_evolve_with_prop(sim,wsp);
 	_reset_prop(sim,wsp);
 
-	t0 = wsp->t;
 	/* evaluate acq_block to get its propagator */
 	if (Tcl_EvalObjEx(interp,obj,0) != TCL_OK) {
 		fprintf(stderr,"acq_block error: (igcompute %d) can not execute block:\n'%s'\n\n",wsp->acqblock_sto-ACQBLOCK_STO_INI+1,Tcl_GetString(obj));
 		exit(1);
 	}
-	if (fabs(wsp->t - t0 - sim->taur/(double)sim->ngamma) > TINY) {
-		fprintf(stderr,"Error: igcompute - acq_block event not synchronized with gamma-averaging\n");
-		fprintf(stderr,"                   acq_block duration = %g us, need to be %g\n",wsp->t-t0,sim->taur/(double)sim->ngamma);
-		exit(1);
-	}
-	/* store cumulative propagators, all should have the same basis */
-	if (wsp->acqblock_sto == ACQBLOCK_STO_INI) {
-		wsp->STO[wsp->acqblock_sto] = blk_cm_dup(wsp->U);
+
+	if (wsp->evalmode == EM_MEASURE) {
+		/* set this once to avoid truncation of pulses */
+		wsp->dt_gcompute = 1e99;
+		/* check timings */
+		if (fabs(wsp->t - t0 - sim->taur/(double)sim->ngamma) > TINY) {
+			fprintf(stderr,"Error: igcompute - acq_block event not synchronized with gamma-averaging\n");
+			fprintf(stderr,"                   acq_block duration = %g us, need to be %g\n",wsp->t-t0,sim->taur/(double)sim->ngamma);
+			exit(1);
+		}
 	} else {
-		wsp->STO[wsp->acqblock_sto] = blk_cm_mul(wsp->U,wsp->STO[wsp->acqblock_sto - 1]);
+		/* store cumulative propagators, all should have the same basis */
+		if (wsp->acqblock_sto == ACQBLOCK_STO_INI) {
+			wsp->STO[wsp->acqblock_sto] = blk_cm_dup(wsp->U);
+		} else {
+			wsp->STO[wsp->acqblock_sto] = blk_cm_mul(wsp->U,wsp->STO[wsp->acqblock_sto - 1]);
+		}
+		//blk_cm_print(wsp->U,"gcompute_acqblock step U");
+		//blk_cm_print(wsp->STO[wsp->acqblock_sto],"gcompute_acqblock U(i)");
+		// store hopefully unchanged sigma in the basis of acq_block propagators
+		//      but only if it changed...
+		if (q) wsp->matrix[wsp->acqblock_sto] = cm_change_basis_2(wsp->sigma,wsp->U->basis,sim);
+		acqblock_sto_incr(wsp);
 	}
-	//blk_cm_print(wsp->U,"gcompute_acqblock step U");
-	//blk_cm_print(wsp->STO[wsp->acqblock_sto],"gcompute_acqblock U(i)");
-	// store hopefully unchanged sigma in the basis of acq_block propagators
-	//      but only if it changed...
-	if (!q) wsp->matrix[wsp->acqblock_sto] = cm_change_basis_2(wsp->sigma,wsp->U->basis,sim);
-	acqblock_sto_incr(wsp);
 }
 
 /****************
@@ -2938,6 +2948,13 @@ void gcompute_props(Sim_info *sim, Sim_wsp *wsp) {
 
 	Ng = sim->ngamma;
 	dtg = sim->taur/(double)Ng;
+
+	/* trial run to check synchronization in acq_block (no effect for old gcompute) */
+	wsp->tstart = 0.0;
+	wsp->evalmode = EM_MEASURE;
+	direct_propagate(sim,wsp);
+	wsp->evalmode = EM_NORMAL;
+
 	// initialize counter for storing wsp->sigma and wsp->U
 	wsp->acqblock_sto = ACQBLOCK_STO_INI;
 

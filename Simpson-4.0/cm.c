@@ -2071,6 +2071,61 @@ void cm_dense(mat_complx *m)
 		}
 }
 
+/* creates full dense matrix even from diagonal */
+void cm_dense_full(mat_complx *m)
+{
+	int i, j, N, c, *ic;
+	complx *ddata, *dd;
+
+	switch (m->type) {
+		case MAT_DENSE :
+			break;
+		case MAT_DENSE_DIAG :
+			ddata = (complx*)calloc(m->row*m->col,sizeof(complx));
+			cblas_zcopy(m->col,m->data,1,ddata,m->row+1);
+			free(m->data); m->data = ddata;
+			m->type = MAT_DENSE;
+			break;
+		case MAT_SPARSE :
+			ddata = (complx*)calloc(m->row*m->col,sizeof(complx));
+			ic = m->icol;
+			dd = m->data;
+			for (i=0; i<m->row; i++) {
+				N = m->irow[i+1] - m->irow[i];
+				for (j=0;j<N; j++) {
+					c = (*ic) -1;
+					ic++;
+					ddata[i+c*m->row] = *dd;
+					dd++;
+				}
+			}
+			free(m->icol); m->icol = NULL;
+			free(m->irow); m->irow = NULL;
+			free(m->data); m->data = ddata;
+			m->type = MAT_DENSE;
+			break;
+		case MAT_SPARSE_DIAG :
+			assert(m->row == m->col);
+			ddata = (complx*)calloc(m->row*m->col,sizeof(complx));
+			N = m->irow[m->row] - 1;
+			ic = m->icol;
+			dd = m->data;
+			for (i=0; i<N; i++) {
+				ddata[(*ic -1)*m->row + *ic -1] = *dd;
+				ic++;
+				dd++;
+			}
+			free(m->icol); m->icol = NULL;
+			free(m->irow); m->irow = NULL;
+			free(m->data); m->data = ddata;
+			m->type = MAT_DENSE;
+			break;
+	   default :
+		   fprintf(stderr,"Error: cm_dense_full - unknown type '%d'\n",m->type);
+		   exit(1);
+		}
+}
+
 void cm_sparse(mat_complx *m, double tol)
 {
 	int realloc_size;

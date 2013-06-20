@@ -71,6 +71,7 @@ void cm_adjointi(mat_complx *m);
 mat_complx * cm_transpose(mat_complx *m);
 int cm_ishermit(mat_complx *m);
 void cm_dense(mat_complx *m);
+void cm_dense_full(mat_complx *m);
 void cm_sparse(mat_complx *m, double tol);
 void cm_shrinktodiag(mat_complx *m);
 complx cm_getelem(mat_complx *m, int r, int c);

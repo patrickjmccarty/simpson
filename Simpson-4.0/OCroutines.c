@@ -546,18 +546,22 @@ void _pulse_shapedOC_2(Sim_info *sim, Sim_wsp *wsp, int Nelem, int *OCchanmap, i
 						if (wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)] != NULL) {
 							free_complx_matrix(wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)]);
 							wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)] = NULL;
+							//printf("free and NULL (%d,%d)\n",wsp->OC_mxpos,2*(k-1));
 						}
 						if (wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1] != NULL) {
 							free_complx_matrix(wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1]);
 							wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1] = NULL;
+							//printf("free and NULL (%d,%d)\n",wsp->OC_mxpos,2*(k-1)+1);
 						}
 						continue;
 					}
 					if (wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)] == NULL) {
 						wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)] = complx_matrix(dim,dim,MAT_DENSE,0,wsp->ham_blk->basis);
+						//printf("alloc (%d,%d)\n",wsp->OC_mxpos,2*(k-1));
 					}
 					if (wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1] == NULL) {
 						wsp->OC_deriv[wsp->OC_mxpos][2*(k-1)+1] = complx_matrix(dim,dim,MAT_DENSE,0,wsp->ham_blk->basis);
+						//printf("alloc (%d,%d)\n",wsp->OC_mxpos,2*(k-1)+1);
 					}
 					/* x channel */
 					cm_zero(gr);
@@ -651,6 +655,7 @@ void _pulse_shapedOC_2(Sim_info *sim, Sim_wsp *wsp, int Nelem, int *OCchanmap, i
 	if (kom != NULL) free_complx_matrix(kom);
 	if (cdum != NULL) free_complx_matrix(cdum);
 	free_complx_matrix(gr);
+	//printf("_pulse_shapedOC_2 done\n");
 }
 
 /****
@@ -1054,22 +1059,34 @@ void gradOC_hermit_2(Sim_info *sim, Sim_wsp *wsp)
 	  //cm_print(lam,"lam");
 	  for (j=1; j<=Nsh; j++) {
 		  if (wsp->OC_deriv[i][2*(j-1)] == NULL) continue;
+		  assert(wsp->OC_deriv[i][2*(j-1)] != NULL);
+		  assert(wsp->OC_deriv[i][2*(j-1)+1] != NULL);
+		  if (wsp->OC_dens[i]->type != MAT_DENSE) cm_dense_full(wsp->OC_dens[i]);
+		  //if (i==1) printf("\t %d: %d; gridx[%d] = %d",i,j,j,gridx[j]);
+		  //if (i==1) cm_print(wsp->OC_dens[i],"dens");
+		  //if (i==1) cm_print(wsp->OC_props[i]->m,"prop");
 		  cblas_zgemm(CblasColMajor,CblasNoTrans,CblasConjTrans,dim,dim,dim,&Cunit,wsp->OC_dens[i]->data,dim,wsp->OC_props[i]->m->data,dim,&Cnull,cm1->data,dim);
+		  //if (i==1) printf(" A");
 		  //cm_print(wsp->OC_dens[i],"rho");
 		  //cm_print(wsp->OC_props[i]->m,"prop Uk");
 		  //cm_print(cm1,"cm1");
 		  /* x channel */
 		  cblas_zgemm(CblasColMajor,CblasNoTrans,CblasNoTrans,dim,dim,dim,&Cunit,wsp->OC_deriv[i][2*(j-1)]->data,dim,cm1->data,dim,&Cnull,cm2->data,dim);
+		  //if (i==1) printf(" B");
 		  //cm_print(wsp->OC_deriv[i][2*(j-1)],"deriv Uk");
 		  //cm_print(cm2,"cm2");
 		  cc = cm_trace(lam,cm2);
 		  //printf("X %d shape %d: cc = %g, %g\n",i,j,cc.re, cc.im);
+		  //if (i==1) printf(" uf");
 		  wsp->fid[gridx[j]].re += 2.0*cc.re;
+		  //if (i==1) printf(" gr");
 		  /* y channel */
 		  cblas_zgemm(CblasColMajor,CblasNoTrans,CblasNoTrans,dim,dim,dim,&Cunit,wsp->OC_deriv[i][2*(j-1)+1]->data,dim,cm1->data,dim,&Cnull,cm2->data,dim);
 		  cc = cm_trace(lam,cm2);
 		  //printf("Y %d shape %d: cc = %g, %g\n",i,j,cc.re, cc.im);
+		  //if (i==1) printf(" bu");
 		  wsp->fid[gridx[j]].im += 2.0*cc.re;
+		  //if (i==1) printf(" ha\n");
 		  (gridx[j])--;
 	  }
 	  blk_simtrans_adj(lam,wsp->OC_props[i],sim);
@@ -1081,6 +1098,7 @@ void gradOC_hermit_2(Sim_info *sim, Sim_wsp *wsp)
   free_complx_matrix(cm2);
   free_complx_matrix(lam);
   free_int_vector(gridx);
+  //printf("_gradOC_hermit_2 done\n");
 }
 
 
@@ -2108,9 +2126,10 @@ double OptimizeLBFGS(Tcl_Interp* interp)
     }
     /* Initialize the parameters for the L-BFGS optimization. */
     lbfgs_parameter_init(&param);
-    //param.epsilon = OCpar.eps; /* convergence criterion */
+    param.epsilon = OCpar.eps; /* convergence criterion */
     param.max_iterations = OCpar.nIterations;
     /*param.linesearch = LBFGS_LINESEARCH_BACKTRACKING;*/
+    param.ftol = 1e-6;
 
     fx = evaluate_target_function(interp);
     printf("     Initial target function: %.10f \n", fx);

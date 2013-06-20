@@ -977,6 +977,9 @@ Sim_wsp * wsp_initialize(Sim_info *s)
 			wsp->OC_dens[i] = NULL;
 			wsp->OC_props[i] = NULL;
 			wsp->OC_mxcode[i] = NULL;
+			for (j=0; j<MAXOCSHAPES*2; j++) {
+				wsp->OC_deriv[i][j] = NULL;
+			}
 		}
 	}
 
@@ -1113,6 +1116,10 @@ void wsp_destroy(Sim_info *s, Sim_wsp *wsp)
     		if (wsp->OC_dens[i]) free_complx_matrix(wsp->OC_dens[i]);
     		if (wsp->OC_props[i]) free_blk_mat_complx(wsp->OC_props[i]);
     		if (wsp->OC_mxcode[i]) free(wsp->OC_mxcode[i]);
+			for (j=0; j<MAXOCSHAPES*2; j++) {
+				if (wsp->OC_deriv[i][j] != NULL) free_complx_matrix(wsp->OC_deriv[i][j]);
+			}
+
     	}
     }
 	/* parametrs for spinach */
