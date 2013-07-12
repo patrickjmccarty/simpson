@@ -333,6 +333,7 @@ proc par {data} {
     rfprof_file use_3_angle_set acq_adjoint
     zprofile zvals relax prop_method use_sparse num_cores averaging_file
     points_per_cycle ED_symmetry
+    oc_lbfgs_eps oc_lbfgs_tol_ls oc_lbfgs_max_ls_eval oc_lbfgs_m
   }
   # ZT: added 'string', 'rfprof_file' and OC_ related to allowed parameters (above)
   # ZT: relax decides wheather relaxation is invoked

@@ -38,9 +38,11 @@
 //#include <winbase.h>
 #endif
 
+#ifndef NO_NFFT
 //#include <complex.h>
 #include "nfft3util.h"
 #include "nfft3.h"
+#endif
 
 #include "defs.h"
 #include "tclutil.h"
@@ -58,8 +60,9 @@
 #include "OCroutines.h"
 #include "fidcalc.h"
 
+#ifndef NO_NFFT
 extern void simpson_nfft_test(void);
-
+#endif
 
 extern pthread_barrier_t simpson_b_start, simpson_b_end;
 extern glob_info_type glob_info;
@@ -405,6 +408,10 @@ void mpi_work_interpolate(Sim_info *sim)
  */
 void master_FWTinterpolate(Sim_info *sim)
 {
+#ifdef NO_NFFT
+	fprintf(stderr,"Error: simpson compiled without NFFT library so no FWT interpolation possible!\n");
+	exit(1);
+#endif
 	int ncr = LEN(sim->crdata);
 	int ntcr = LEN(sim->targetcrdata);
 	int i, j, k, icr;

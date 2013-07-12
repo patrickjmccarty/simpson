@@ -199,6 +199,12 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
 	  }  // for loop over objc
   }
   // par(method) parsed.
+#ifdef NO_NFFT
+  if ( (s->interpolation != 0) && (s->interpolation != 3) ) {
+	  fprintf(stderr,"Error: simpson compiled without NFFT library - FWT interpolation not possible!\n");
+	  exit(1);
+  }
+#endif
 
   s->points_per_cycle = TclGetInt(interp,"par","points_per_cycle",0,8);
 

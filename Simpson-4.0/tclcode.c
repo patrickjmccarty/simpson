@@ -300,6 +300,7 @@ char simpson_tcl[] =
     "    rfprof_file use_3_angle_set acq_adjoint\n"
     "    zprofile zvals relax prop_method use_sparse num_cores averaging_file\n"
 	"    points_per_cycle ED_symmetry\n"
+	"    oc_lbfgs_eps oc_lbfgs_tol_ls oc_lbfgs_max_ls_eval oc_lbfgs_m\n"
     "  }\n"
     "\n"
     "  set allowsubst {\n"

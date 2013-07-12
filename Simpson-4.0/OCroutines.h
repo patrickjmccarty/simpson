@@ -8,7 +8,7 @@
 typedef struct _OCoptPars {
 	/* all are read only */
 	double eps, tol, mnbkstep, cut, stepmin, grad_level;
-	int isinit, ndim, method, nIterations, nreport, ncut, max_brack_eval, max_brent_eval, verb;
+	int isinit, ndim, method, nIterations, nreport, ncut, max_brack_eval, max_brent_eval, verb, lbfgs_m;
 	char VarSaveProc[64];
 	int gradmode, gradmodeprop, *var_shapes, *grad_shapes;
 	double *var_shapes_min, *var_shapes_max, *var_shapes_rmsmax;

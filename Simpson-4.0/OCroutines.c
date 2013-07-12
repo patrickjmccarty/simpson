@@ -29,6 +29,11 @@
 #include "ham.h"
 #include "lbfgs.h"
 
+/* added for testing speed improvements */
+//#include <windows.h>
+//#include <winbase.h>
+//LARGE_INTEGER _tickpsec_, _tv1_, _tv2_;
+
 /* global variable holding all OC parameters */
 OCoptPars OCpar;
 
@@ -1937,6 +1942,10 @@ void free_grad_fid(int gr_slot, Tcl_Interp *interp)
     /* print out results */
     printf("    Iter %d: tf=%.10f (step=%g)\n",iter, tfval, step);
     
+    /* timing - TOC every iteration */
+    //QueryPerformanceCounter(&_tv2_);
+    //printf("\tTiming: %.9f\n",((float)(_tv2_.QuadPart-_tv1_.QuadPart))/(float)_tickpsec_.QuadPart);
+
     /* store sequences every nreport steps */
     if ( (iter % OCpar.nreport) < 1 ) {
        printf("   Storing data for iteration %d\n",iter);
@@ -2090,6 +2099,15 @@ static int lbfgs_progress(void *interp,
        printf("   Storing data for iteration %d\n",k);
        store_OCshapes((Tcl_Interp*)interp);
     }
+    /* stop if search is not promissing */
+    if( (-fx < OCpar.cut) && (k > OCpar.ncut) ) {
+       printf("Done %d iterations, but target function below cut-off limit.\n\n",k);
+       return 1;
+    }
+
+    /* timing - TOC every iteration */
+    //QueryPerformanceCounter(&_tv2_);
+    //printf("\tTiming: %.9f\n",((float)(_tv2_.QuadPart-_tv1_.QuadPart))/(float)_tickpsec_.QuadPart);
 
     return 0;
 }
@@ -2129,7 +2147,9 @@ double OptimizeLBFGS(Tcl_Interp* interp)
     param.epsilon = OCpar.eps; /* convergence criterion */
     param.max_iterations = OCpar.nIterations;
     /*param.linesearch = LBFGS_LINESEARCH_BACKTRACKING;*/
-    param.ftol = 1e-6;
+    param.ftol = OCpar.tol;
+    param.max_linesearch = OCpar.max_brack_eval;
+    param.m = OCpar.lbfgs_m;
 
     fx = evaluate_target_function(interp);
     printf("     Initial target function: %.10f \n", fx);
@@ -2155,6 +2175,10 @@ double OptimizeLBFGS(Tcl_Interp* interp)
   Tcl_Obj* objptr;
   int i, slot, ndim, nsh, ish;
   char strbuf[32];
+
+  /* timings - initial TIC */
+  //QueryPerformanceFrequency(&_tickpsec_);
+  //QueryPerformanceCounter(&_tv1_);
 
   /* disable when relaxation is ON */
   TclGetString(interp,strbuf,"par","relax",0,"off");
@@ -2253,32 +2277,14 @@ double OptimizeLBFGS(Tcl_Interp* interp)
   OCpar.ndim = ndim;
 
   /* read in all parameters from par(OC_?) or set their default values */
-  objptr = Tcl_GetVar2Ex( interp, "par", "oc_tol_cg", TCL_GLOBAL_ONLY);
-  if (!objptr) {
-     OCpar.eps = 1.0e-6;
+  TclGetString(interp,strbuf,"par","oc_method",0,"CG");
+  if (!strncmp(strbuf,"CG",2)) {
+	  OCpar.method = 1;
+  } else if (!strncmp(strbuf,"L-BFGS",6)) {
+	  OCpar.method = 0;
   } else {
-     if ( Tcl_GetDoubleFromObj( interp,objptr,&OCpar.eps) != TCL_OK ) {
-       OCpar.eps = 1.0e-6;
-       printf("Warning! Could'n read par(oc_tol_cg), using default value %f\n",OCpar.eps);
-     } 
-  }
-  objptr = Tcl_GetVar2Ex( interp, "par", "oc_tol_ls", TCL_GLOBAL_ONLY);
-  if (!objptr) {
-     OCpar.tol = 1.0e-3;
-  } else {
-     if ( Tcl_GetDoubleFromObj( interp,objptr,&OCpar.tol) != TCL_OK ) {
-       OCpar.tol = 1.0e-3;
-       printf("Warning! Could'n read par(oc_tol_ls), using default value %f\n",OCpar.tol);
-     } 
-  }
-  objptr = Tcl_GetVar2Ex( interp, "par", "oc_mnbrak_step", TCL_GLOBAL_ONLY);
-  if (!objptr) {
-     OCpar.mnbkstep = 10.0;
-  } else {
-     if ( Tcl_GetDoubleFromObj( interp,objptr,&OCpar.mnbkstep) != TCL_OK ) {
-       OCpar.mnbkstep = 10.0;
-       printf("Warning! Could'n read par(oc_mnbrak_step), using default value %f\n",OCpar.mnbkstep);
-     } 
+     fprintf(stderr,"oc_optimize error: invalid oc_method, can be 'CG' or 'L-BFGS'\n");
+     exit(1);
   }
   objptr = Tcl_GetVar2Ex( interp, "par", "oc_verbose", TCL_GLOBAL_ONLY);
   if (!objptr) {
@@ -2325,16 +2331,6 @@ double OptimizeLBFGS(Tcl_Interp* interp)
        printf("Warning! Could'n read par(oc_var_save_iter), using default value %d\n",OCpar.nreport);
      } 
   } 
-  objptr = Tcl_GetVar2Ex( interp, "par", "oc_cg_min_step", TCL_GLOBAL_ONLY);
-  if (!objptr) {
-     OCpar.stepmin = 1.0e-3;
-  } else {
-     if ( Tcl_GetDoubleFromObj( interp,objptr,&OCpar.stepmin) != TCL_OK ) {
-       OCpar.stepmin = 1.0e-3;
-       printf("Warning! Could'n read par(oc_cg_min_step), using default value %f\n",OCpar.stepmin);
-     } 
-  }
- 
   objptr = Tcl_GetVar2Ex( interp, "par", "oc_var_save_proc", TCL_GLOBAL_ONLY);
   if (!objptr) {
      strcpy(OCpar.VarSaveProc,"none");
@@ -2349,24 +2345,6 @@ double OptimizeLBFGS(Tcl_Interp* interp)
        printf("Warning! Could'n read par(oc_var_save_proc), using default value %s\n",OCpar.VarSaveProc);
      } 
   }
-  objptr = Tcl_GetVar2Ex( interp, "par", "oc_max_brack_eval", TCL_GLOBAL_ONLY);
-  if (!objptr) {
-     OCpar.max_brack_eval = 100;
-  } else {
-     if ( Tcl_GetIntFromObj( interp,objptr,&OCpar.max_brack_eval) != TCL_OK ) {
-       OCpar.max_brack_eval = 100;
-       printf("Warning! Could'n read par(oc_max_brack_eval), using default value %d\n",OCpar.max_brack_eval);
-     } 
-  }
-  objptr = Tcl_GetVar2Ex( interp, "par", "oc_max_brent_eval", TCL_GLOBAL_ONLY);
-  if (!objptr) {
-     OCpar.max_brent_eval = 100;
-  } else {
-     if ( Tcl_GetIntFromObj( interp,objptr,&OCpar.max_brent_eval) != TCL_OK ) {
-       OCpar.max_brent_eval = 100;
-       printf("Warning! Could'n read par(oc_max_brent_eval), using default value %d\n",OCpar.max_brent_eval);
-     } 
-  }
   objptr = Tcl_GetVar2Ex( interp, "par", "oc_grad_level", TCL_GLOBAL_ONLY);
   if (!objptr) {
      OCpar.grad_level = 1;
@@ -2376,36 +2354,129 @@ double OptimizeLBFGS(Tcl_Interp* interp)
        printf("Warning! Could'n read par(oc_grad_level), using default value %g\n",OCpar.grad_level);
      }
   }
-  TclGetString(interp,strbuf,"par","oc_method",0,"CG");
-  if (!strncmp(strbuf,"CG",2)) {
-	  OCpar.method = 1;
-  } else if (!strncmp(strbuf,"L-BFGS",6)) {
-	  OCpar.method = 0;
-  } else {
-     fprintf(stderr,"oc_optimize error: invalid oc_method, can be 'CG' or 'L-BFGS'\n");
-     exit(1);
-  }
- 
-  printf("Number of variables is %d\n",OCpar.ndim);   
-  printf("Global tolerance on target function is %g\n",OCpar.eps);
-  printf("Maximal number of iterations is %d\n",OCpar.nIterations);
-  printf("Optimization is terminated after %d iterations if target function is not higher than %g\n",OCpar.ncut,OCpar.cut);
-  printf("Every %d iterations procedure '%s' (for storing variables) is executed\n",OCpar.nreport, OCpar.VarSaveProc);
-  printf("Minimal step size along conjugated gradient is %g\n",OCpar.stepmin);
-  printf("Tolerance for line-search (Brent) is %g\n",OCpar.tol);
-  printf("Line-search will terminate after reaching %d evaluations\n",OCpar.max_brent_eval);
-  printf("Initial step for bracketing minimum is %g\n",OCpar.mnbkstep);
-  printf("Bracketing will fail after conducting %d evaluations\n",OCpar.max_brack_eval);
-  printf("Gradient level parameter is %g\n",OCpar.grad_level);
-  printf("Optimization method is '%s'\n\n",OCpar.method ? "CG" : "L-BFGS");
- 
 
-  if (OCpar.method == 1) {
+  if (OCpar.method == 1) { /* conjugated gradients */
+	  objptr = Tcl_GetVar2Ex( interp, "par", "oc_tol_cg", TCL_GLOBAL_ONLY);
+	  if (!objptr) {
+	     OCpar.eps = 1.0e-6;
+	  } else {
+	     if ( Tcl_GetDoubleFromObj( interp,objptr,&OCpar.eps) != TCL_OK ) {
+	       OCpar.eps = 1.0e-6;
+	       printf("Warning! Could'n read par(oc_tol_cg), using default value %f\n",OCpar.eps);
+	     }
+	  }
+	  objptr = Tcl_GetVar2Ex( interp, "par", "oc_tol_ls", TCL_GLOBAL_ONLY);
+	  if (!objptr) {
+	     OCpar.tol = 1.0e-3;
+	  } else {
+	     if ( Tcl_GetDoubleFromObj( interp,objptr,&OCpar.tol) != TCL_OK ) {
+	       OCpar.tol = 1.0e-3;
+	       printf("Warning! Could'n read par(oc_tol_ls), using default value %f\n",OCpar.tol);
+	     }
+	  }
+	  objptr = Tcl_GetVar2Ex( interp, "par", "oc_mnbrak_step", TCL_GLOBAL_ONLY);
+	  if (!objptr) {
+	     OCpar.mnbkstep = 10.0;
+	  } else {
+	     if ( Tcl_GetDoubleFromObj( interp,objptr,&OCpar.mnbkstep) != TCL_OK ) {
+	       OCpar.mnbkstep = 10.0;
+	       printf("Warning! Could'n read par(oc_mnbrak_step), using default value %f\n",OCpar.mnbkstep);
+	     }
+	  }
+	  objptr = Tcl_GetVar2Ex( interp, "par", "oc_cg_min_step", TCL_GLOBAL_ONLY);
+	  if (!objptr) {
+	     OCpar.stepmin = 1.0e-3;
+	  } else {
+	     if ( Tcl_GetDoubleFromObj( interp,objptr,&OCpar.stepmin) != TCL_OK ) {
+	       OCpar.stepmin = 1.0e-3;
+	       printf("Warning! Could'n read par(oc_cg_min_step), using default value %f\n",OCpar.stepmin);
+	     }
+	  }
+	  objptr = Tcl_GetVar2Ex( interp, "par", "oc_max_brack_eval", TCL_GLOBAL_ONLY);
+	  if (!objptr) {
+	     OCpar.max_brack_eval = 100;
+	  } else {
+	     if ( Tcl_GetIntFromObj( interp,objptr,&OCpar.max_brack_eval) != TCL_OK ) {
+	       OCpar.max_brack_eval = 100;
+	       printf("Warning! Could'n read par(oc_max_brack_eval), using default value %d\n",OCpar.max_brack_eval);
+	     }
+	  }
+	  objptr = Tcl_GetVar2Ex( interp, "par", "oc_max_brent_eval", TCL_GLOBAL_ONLY);
+	  if (!objptr) {
+	     OCpar.max_brent_eval = 100;
+	  } else {
+	     if ( Tcl_GetIntFromObj( interp,objptr,&OCpar.max_brent_eval) != TCL_OK ) {
+	       OCpar.max_brent_eval = 100;
+	       printf("Warning! Could'n read par(oc_max_brent_eval), using default value %d\n",OCpar.max_brent_eval);
+	     }
+	  }
+
+	  printf("Number of variables is %d\n",OCpar.ndim);
+	  printf("Global tolerance on target function is %g\n",OCpar.eps);
+	  printf("Maximal number of iterations is %d\n",OCpar.nIterations);
+	  printf("Optimization is terminated after %d iterations if target function is not higher than %g\n",OCpar.ncut,OCpar.cut);
+	  printf("Every %d iterations procedure '%s' (for storing variables) is executed\n",OCpar.nreport, OCpar.VarSaveProc);
+	  printf("Minimal step size along conjugated gradient is %g\n",OCpar.stepmin);
+	  printf("Tolerance for line-search (Brent) is %g\n",OCpar.tol);
+	  printf("Line-search will terminate after reaching %d evaluations\n",OCpar.max_brent_eval);
+	  printf("Initial step for bracketing minimum is %g\n",OCpar.mnbkstep);
+	  printf("Bracketing will fail after conducting %d evaluations\n",OCpar.max_brack_eval);
+	  printf("Gradient level parameter is %g\n",OCpar.grad_level);
+	  printf("Optimization method is '%s'\n\n",OCpar.method ? "CG" : "L-BFGS");
+
 	  tfval = OptimizeCG(interp);
-  } else {
+  } else { /* L/BFGS */
+	  objptr = Tcl_GetVar2Ex( interp, "par", "oc_lbfgs_eps", TCL_GLOBAL_ONLY);
+	  if (!objptr) {
+	     OCpar.eps = 1.0e-8;
+	  } else {
+	     if ( Tcl_GetDoubleFromObj( interp,objptr,&OCpar.eps) != TCL_OK ) {
+	       OCpar.eps = 1.0e-8;
+	       printf("Warning! Could'n read par(oc_lbfgs_eps), using default value %f\n",OCpar.eps);
+	     }
+	  }
+	  objptr = Tcl_GetVar2Ex( interp, "par", "oc_lbfgs_tol_ls", TCL_GLOBAL_ONLY);
+	  if (!objptr) {
+	     OCpar.tol = 1.0e-6;
+	  } else {
+	     if ( Tcl_GetDoubleFromObj( interp,objptr,&OCpar.tol) != TCL_OK ) {
+	       OCpar.tol = 1.0e-6;
+	       printf("Warning! Could'n read par(oc_lbfgs_tol_ls), using default value %f\n",OCpar.tol);
+	     }
+	  }
+	  objptr = Tcl_GetVar2Ex( interp, "par", "oc_lbfgs_max_ls_eval", TCL_GLOBAL_ONLY);
+	  if (!objptr) {
+	     OCpar.max_brack_eval = 20;
+	  } else {
+	     if ( Tcl_GetIntFromObj( interp,objptr,&OCpar.max_brack_eval) != TCL_OK ) {
+	       OCpar.max_brack_eval = 20;
+	       printf("Warning! Could'n read par(oc_lbfgs_max_ls_eval), using default value %d\n",OCpar.max_brack_eval);
+	     }
+	  }
+	  objptr = Tcl_GetVar2Ex( interp, "par", "oc_lbfgs_m", TCL_GLOBAL_ONLY);
+	  if (!objptr) {
+	     OCpar.lbfgs_m = 6;
+	  } else {
+	     if ( Tcl_GetIntFromObj( interp,objptr,&OCpar.lbfgs_m) != TCL_OK ) {
+	       OCpar.lbfgs_m = 6;
+	       printf("Warning! Could'n read par(oc_lbfgs_m), using default value %d\n",OCpar.lbfgs_m);
+	     }
+	  }
+
+	  printf("Number of variables is %d\n",OCpar.ndim);
+	  printf("Epsilon for convergence test is %g\n",OCpar.eps);
+	  printf("Maximal number of iterations is %d\n",OCpar.nIterations);
+	  printf("Optimization is terminated after %d iterations if target function is not higher than %g\n",OCpar.ncut,OCpar.cut);
+	  printf("Every %d iterations procedure '%s' (for storing variables) is executed\n",OCpar.nreport, OCpar.VarSaveProc);
+	  printf("The number of corrections to approximate the inverse hessian matrix is %d\n",OCpar.lbfgs_m);
+	  printf("Tolerance for line-search (Armijo) is %g\n",OCpar.tol);
+	  printf("Line-search will terminate after reaching %d evaluations\n",OCpar.max_brack_eval);
+	  printf("Gradient level parameter is %g\n",OCpar.grad_level);
+	  printf("Optimization method is '%s'\n\n",OCpar.method ? "CG" : "L-BFGS");
+
 	  tfval = OptimizeLBFGS(interp);
   }
- 
+
   TclSetResult(interp,"%lf",tfval);
  
   OCpar_destroy();
