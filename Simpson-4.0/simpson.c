@@ -60,9 +60,7 @@
 #include "OCroutines.h"
 #include "fidcalc.h"
 
-#ifndef NO_NFFT
-extern void simpson_nfft_test(void);
-#endif
+//extern void simpson_nfft_test(void);
 
 extern pthread_barrier_t simpson_b_start, simpson_b_end;
 extern glob_info_type glob_info;
@@ -411,7 +409,7 @@ void master_FWTinterpolate(Sim_info *sim)
 #ifdef NO_NFFT
 	fprintf(stderr,"Error: simpson compiled without NFFT library so no FWT interpolation possible!\n");
 	exit(1);
-#endif
+#else
 	int ncr = LEN(sim->crdata);
 	int ntcr = LEN(sim->targetcrdata);
 	int i, j, k, icr;
@@ -533,6 +531,7 @@ void master_FWTinterpolate(Sim_info *sim)
 
 	nfsft_finalize(&sourceplan);
 	nfsft_finalize(&targetplan);
+#endif
 }
 
 /****
@@ -1524,7 +1523,7 @@ int tclInternalSimpson(ClientData data,Tcl_Interp* interp,
   return TclSetResult(interp,"%d",fidN);
 }
 
-
+/****** remove this ********
 int tclnfft_test(ClientData data,Tcl_Interp* interp, int argc, Tcl_Obj *argv[]) {
 
 	printf("\nKUKUKUKUKUKIU\n\n");
@@ -1549,14 +1548,14 @@ int tclfftw_test(ClientData data,Tcl_Interp* interp, int argc, Tcl_Obj *argv[]) 
 
 	return TCL_OK;
 }
-
+*************/
 
 
 void tclcmd_simpson(Tcl_Interp* interp)
 {
   Tcl_CreateObjCommand(interp,"internalsimpson",(Tcl_ObjCmdProc *)tclInternalSimpson,(ClientData)NULL,(Tcl_CmdDeleteProc*)NULL);
   Tcl_CreateObjCommand(interp,"crystallites",(Tcl_ObjCmdProc *)tclCrystallites,(ClientData)NULL,(Tcl_CmdDeleteProc*)NULL);
-  Tcl_CreateObjCommand(interp,"nfft_test",(Tcl_ObjCmdProc *)tclnfft_test,(ClientData)NULL,(Tcl_CmdDeleteProc*)NULL);
-  Tcl_CreateObjCommand(interp,"fftw_test",(Tcl_ObjCmdProc *)tclfftw_test,(ClientData)NULL,(Tcl_CmdDeleteProc*)NULL);
+//  Tcl_CreateObjCommand(interp,"nfft_test",(Tcl_ObjCmdProc *)tclnfft_test,(ClientData)NULL,(Tcl_CmdDeleteProc*)NULL);
+//  Tcl_CreateObjCommand(interp,"fftw_test",(Tcl_ObjCmdProc *)tclfftw_test,(ClientData)NULL,(Tcl_CmdDeleteProc*)NULL);
 
 } 

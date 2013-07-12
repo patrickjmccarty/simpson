@@ -52,8 +52,8 @@ glob_info_type glob_info;
 
 extern void simpson_mpi_slave(Tcl_Interp *interp);
 extern void simpson_thread_slave( void *thr_id);
-extern int simpson_nfft_test(void);
-extern void simpson_fftw_test(void);
+//extern int simpson_nfft_test(void);
+//extern void simpson_fftw_test(void);
 
 void noprintf(const char* format, ...)
 {
