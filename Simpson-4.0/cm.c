@@ -373,6 +373,48 @@ mat_double * dm_dup(mat_double *m)
 	return mm;
 }
 
+/* result is always full dense matrix */
+mat_double * dm_dup2(mat_double *m)
+{
+	int i, j, N, c, *ic;
+	double *ddata, *dd;
+	int len = m->row;
+	mat_double *mm = double_matrix(m->row,m->col,MAT_DENSE,0,m->basis);
+
+	switch (m->type) {
+		case MAT_DENSE :
+			memcpy(mm->data,m->data,(m->row*m->col)*sizeof(double));
+			break;
+		case MAT_DENSE_DIAG :
+			dm_zero(mm);
+			cblas_dcopy(len,m->data,1,mm->data,len+1);
+			break;
+		case MAT_SPARSE :
+		case MAT_SPARSE_DIAG :
+			dm_zero(mm);
+			ddata = mm->data;
+			ic = m->icol;
+			dd = m->data;
+			for (i=0; i<m->row; i++) {
+				N = m->irow[i+1] - m->irow[i];
+				for (j=0;j<N; j++) {
+					c = (*ic) -1;
+					ic++;
+					ddata[i+c*m->row] = *dd;
+					dd++;
+				}
+			}
+			break;
+	   default :
+		   fprintf(stderr,"Error: dm_dup2 - unknown type '%d'\n",m->type);
+		   exit(1);
+		}
+
+	return mm;
+}
+
+
+
 void dm_copy(mat_double *m1, mat_double *m2)
 {
 	if (m1 == NULL) {
@@ -1749,6 +1791,63 @@ double dm_normest(mat_double *m)
 	}
 
 	return res;
+}
+
+double dm_dm_normest(mat_double *re, mat_double *im)
+{
+	double res=-10.0, dum, *r1, *r2;
+	int i,j;
+
+	assert(re->type == im->type);
+	switch (re->type) {
+	case MAT_DENSE_DIAG:
+		r1 = re->data;
+		r2 = im->data;
+		for (i=0; i<re->row; i++) {
+			dum = sqrt((*r1)*(*r1)+(*r2)*(*r2));
+			if (dum > res) res = dum;
+			r1++;
+			r2++;
+		}
+		break;
+	case MAT_SPARSE_DIAG:
+		fprintf(stderr,"Error: dm_dm_normest - MAT_SPARSE_DIAG\n");
+		break;
+	case MAT_DENSE:
+		r1 = re->data;
+		r2 = im->data;
+		for (i=0; i<re->row; i++) {
+			dum = 0;
+			for (j=0; j<re->col; j++) {
+				dum += sqrt((*r1)*(*r1)+(*r2)*(*r2));
+				r1++;
+				r2++;
+			}
+			if (dum > res) res = dum;
+		}
+		break;
+	case MAT_SPARSE: {
+		fprintf(stderr,"Error: dm_dm_normest - MAT_SPARSE\n");
+		break; }
+	default:
+		fprintf(stderr,"Error: dm_dm_normest - invalid matrix type\n");
+		exit(1);
+	}
+
+	return res;
+}
+
+double dm_max(mat_double *m)
+{
+	int len=0;
+
+	switch (m->type) {
+	case MAT_DENSE  : len = m->row * m->col; break;
+	case MAT_DENSE_DIAG  : len = m->row; break;
+	case MAT_SPARSE :
+	case MAT_SPARSE_DIAG : len = m->irow[m->row]-1;
+	}
+	return m->data[cblas_idamax(len,m->data,1)];
 }
 
 int dm_nnz(mat_double *m)
@@ -4725,10 +4824,12 @@ void prop_pade_real(mat_complx *prop, mat_double *ham, double dt)
 						16380, 182, 1};
 	int dim = ham->row;
 
+	TIMING_INIT_VAR2(tv1,tv2);
+
 	norm = dm_normest(ham)*dt; // NOTE: here 1-norm must be used!!!
 	// I use infinity-norm since it is easier to code for sparse matrices
 	// ham is real symmetric and therefore the result is identical
-	//printf("prop_pade_real norm = %f\n",norm);
+	printf("prop_pade_real norm = %f\n",norm);
 	if (norm < 1.495585217958292e-2) {
 		//m = 3;
 		U = dm_creatediag('d',dim,b[1],ham->basis);
@@ -4790,17 +4891,19 @@ void prop_pade_real(mat_complx *prop, mat_double *ham, double dt)
 		dm_multod(V,H8,b[8]);
 		free_double_matrix(H8);
 	} else {
+		TIMING_TIC(tv1);
 		//m = 13;
 		if (norm > 5.371920351148152) {
 			// need scaling
 			nsq = (int)ceil(log(norm/5.371920351148152)/log(2.0));
 			scl = pow(2,nsq);
 		}
-		//printf("prop_pade_real nsq = %d, scl = %f\n",nsq,scl);
+		printf("prop_pade_real nsq = %d, scl = %f\n",nsq,scl);
 		dm_muld(ham, dt/scl);
 		mat_double *H2 = dm_mul(ham, ham);
 		mat_double *H4 = dm_mul(H2, H2);
 		mat_double *H6 = dm_mul(H2, H4);
+		TIMING_TOC(tv1,tv2,"Pade mults");
 		U = double_matrix(dim,dim,MAT_DENSE,0,ham->basis);
 		dm_zero(U);
 		dm_multod(U,H2, b[9]);
@@ -4824,34 +4927,44 @@ void prop_pade_real(mat_complx *prop, mat_double *ham, double dt)
 		free_double_matrix(H2);
 		free_double_matrix(H4);
 		free_double_matrix(H6);
+		TIMING_TOC(tv2,tv1,"Pade adds");
 	}
 	dm_multo_rev(U,ham);
 	mat_complx *lhs = dm_complx(V);
-	dm_copy2cm(V,prop);
+	//dm_copy2cm(V,prop);
 	free_double_matrix(V);
 	cm_dense(lhs);
-	cm_dense(prop);
-	assert( (lhs->type == MAT_DENSE) && (prop->type == MAT_DENSE) );
+	//cm_dense(prop);
+	mat_complx *rhs = cm_dup(lhs);
+	//assert( (lhs->type == MAT_DENSE) && (prop->type == MAT_DENSE) );
 	dm_dense(U);
 	assert(U->type == MAT_DENSE);
 	cblas_daxpy(dim*dim,1.0,U->data,1,(double*)(lhs->data)+1,2);
-	cblas_daxpy(dim*dim,-1.0,U->data,1,(double*)(prop->data)+1,2);
+	//cblas_daxpy(dim*dim,-1.0,U->data,1,(double*)(prop->data)+1,2);
+	cblas_daxpy(dim*dim,-1.0,U->data,1,(double*)(rhs->data)+1,2);
 	int *pvec = (int*)malloc((dim+1)*sizeof(int));
 	int info = 0;
-	zgesv_(&dim,&dim,lhs->data,&dim,pvec,prop->data,&dim,&info);
+	//zgesv_(&dim,&dim,lhs->data,&dim,pvec,prop->data,&dim,&info);
+	zgesv_(&dim,&dim,lhs->data,&dim,pvec,rhs->data,&dim,&info);
+	// tried zsysv solver for symmetric matrix but it is again slower...
 	if (info != 0) {
 		fprintf(stderr,"prop_pade error: zgesv failed with info=%d\n",info);
 		exit(1);
 	}
     free(pvec);
     free_complx_matrix(lhs);
+	TIMING_TOC(tv1,tv2,"Pade solver");
 	/* squaring */
 	if (nsq) {
 		int k;
 		for (k=0; k<nsq; k++) {
-			cm_multo(prop,prop);
+			//cm_multo(prop,prop);
+			cm_multo(rhs,rhs);
 		}
 	}
+	// update propagator
+	cm_multo_rev(prop,rhs);
+	free_complx_matrix(rhs);
 
 }
 
@@ -4921,7 +5034,7 @@ void prop_cheby_real(mat_complx *prop, mat_double *ham, double dt)
 	//printf("\tprop_cheby IN: ham is %s, prop is %s\n",matrix_type(ham->type),matrix_type(prop->type));
 	dm_muld(ham,-dt);
 	//dm_print(ham,"HAMILTONIAN");
-	//printf("\t--> ham norm is %g",dm_normest(ham));
+	printf("\t--> ham norm is %g",dm_normest(ham));
 	dm_lams(ham,&lmax, &lmin);
 	double dw = 0.5*(lmax-lmin);
 	double wb = 0.5*(lmax+lmin);
@@ -4944,6 +5057,7 @@ void prop_cheby_real(mat_complx *prop, mat_double *ham, double dt)
 	dm_multod(Uim,T1re,aa);
 	dm_multod(Ure,T1im,-aa);
 	double norm = (fabs(dm_normest(T1re)) + fabs(dm_normest(T1im)))*fabs(aa);
+	//double norm = dm_dm_normest(T1re,T1im)*fabs(aa);
 	int iter = 1;
 	mat_double *p0re = T0re;
 	mat_double *p0im = T0im;
@@ -4977,7 +5091,10 @@ void prop_cheby_real(mat_complx *prop, mat_double *ham, double dt)
 			dm_multod(Ure,p1im, aa);
 		}
 		norm = (fabs(dm_normest(p1re)) + fabs(dm_normest(p1im)))*fabs(aa);
-		//printf("\t iter %d.) T_norm = %g, Ji = %g, norm = %g\n",iter,fabs(dm_normest(p1re)) + fabs(dm_normest(p1im)),fabs(aa),norm);
+		//norm = dm_dm_normest(p1re,p1im)*fabs(aa);
+		printf("\t iter %d.) T_norm = %g, Ji = %g, norm = %g\n",iter,fabs(dm_normest(p1re)) + fabs(dm_normest(p1im)),fabs(aa),norm);
+		//printf("Real part maximum: %g\n",p1re->data[cblas_idamax(p1re->row*p1re->col,p1re->data,1)]);
+		//printf("Imag part maximum: %g\n",p1im->data[cblas_idamax(p1im->row*p1im->col,p1im->data,1)]);
 	}
 	//printf("prop_cheby_real done in %d iterations\n",iter);
 
@@ -4994,6 +5111,184 @@ void prop_cheby_real(mat_complx *prop, mat_double *ham, double dt)
 	//printf("\tprop_cheby OUT: ham is %s, prop is %s\n",matrix_type(ham->type),matrix_type(prop->type));
 
 }
+
+void prop_cheby2_real(mat_complx *prop, mat_double *ham, double dt)
+{
+	double TOL = 1e-6;
+	double dw=0.5;
+	int nsq = 0;
+	int dim = ham->row;
+	int len = dim*dim;
+	int i;
+
+	assert(ham->type == MAT_DENSE);
+
+	TIMING_INIT_VAR2(tv1,tv2);
+
+	//dm_print(ham,"HAMILTONIAN");
+	/* scaling step */
+	double scaling = dm_normest(ham)*dt;
+	printf("prop_cheby2_real: Hamiltonian norm estimate = %g\n",scaling);
+	if (scaling > 1) {
+		nsq = (int)ceil(log(scaling)/log(2.0));
+		scaling = pow(2,nsq);
+	}
+	printf("\t --> will do %d squarings\n",nsq);
+	dm_muld(ham,-dt/scaling/dw);
+
+	TIMING_TIC(tv1);
+
+	mat_double *T0 = double_matrix(dim,dim,MAT_DENSE,0,ham->basis);
+	dm_zero(T0);
+	mat_double *T1 = dm_dup2(ham);
+	mat_complx *U = complx_matrix(dim,dim,MAT_DENSE,0,ham->basis);
+	cm_zero(U);
+	double aa = bessj(0,dw);
+	for (i=0; i<len; i+=dim+1) {
+		T0->data[i] = 1.0;
+		U->data[i].re = aa;
+	}
+
+	aa = 2.0*bessj(1,dw);
+	cblas_daxpy(len,aa,T1->data,1,(double*)(U->data)+1,2);
+
+	double norm = fabs(dm_max(T1)*aa);
+	int iter = 1;
+	mat_double *p0 = T0;
+	mat_double *p1 = T1;
+	mat_double *pdum;
+	while ( norm > TOL ) {
+		iter++;
+		if (iter > 20) {
+			fprintf(stderr,"ERROR: prop_cheby2_real - exceeded max iter 20\n");
+			exit(1);
+		}
+		aa = 2.0*bessj(iter,dw);
+		dm_mm(2.0,ham,p1,-1.0,p0); // this is faster!!!
+		//cblas_dsymm(CblasColMajor,CblasLeft,CblasUpper,dim,dim,2.0,ham->data,dim,p1->data,dim,-1.0,p0->data,dim);
+		pdum = p0; p0 = p1; p1 = pdum;
+		switch (iter % 4) {
+		case 0:
+			cblas_daxpy(len,aa,p1->data,1,(double*)(U->data),2);
+			break;
+		case 1:
+			cblas_daxpy(len,aa,p1->data,1,(double*)(U->data)+1,2);
+			break;
+		case 2:
+			cblas_daxpy(len,-aa,p1->data,1,(double*)(U->data),2);
+			break;
+		case 3:
+			cblas_daxpy(len,-aa,p1->data,1,(double*)(U->data)+1,2);
+		}
+		norm = fabs(dm_max(p1)*aa);
+		printf("\t iter %d.) T_norm = %g, Ji = %g, norm = %g\n",iter,fabs(dm_max(p1)),aa,norm);
+	}
+	//printf("prop_cheby_real done in %d iterations\n",iter);
+
+	free_double_matrix(T0);
+	free_double_matrix(T1);
+
+	TIMING_TOC(tv1,tv2,"chebyshev iterations");
+
+	// squaring
+	if (nsq) {
+		for (i=0; i<nsq; i++) {
+			cm_multo(U,U);
+		}
+	}
+	// update propagator
+	cm_multo_rev(prop,U);
+	free_complx_matrix(U);
+
+	TIMING_TOC(tv2,tv1,"chebyshev squarings");
+}
+
+void prop_cheby3_real(mat_complx *prop, mat_double *ham, double dt)
+{
+	double TOL = 1e-6;
+	double lmax = 0.0;
+	double lmin = 0.0;
+	int dim = ham->row;
+	int len = dim*dim;
+	int i;
+
+	TIMING_INIT_VAR2(tv1,tv2);
+	TIMING_TIC(tv1);
+
+	assert(ham->type == MAT_DENSE);
+
+	//printf("\tprop_cheby IN: ham is %s, prop is %s\n",matrix_type(ham->type),matrix_type(prop->type));
+	dm_muld(ham,-dt);
+	//dm_print(ham,"HAMILTONIAN");
+	printf("\t--> ham norm is %g",dm_normest(ham));
+	dm_lams(ham,&lmax, &lmin);
+	double dw = 0.5*(lmax-lmin);
+	double wb = 0.5*(lmax+lmin);
+	dm_addtodiag(ham,-wb);
+	dm_muld(ham,1.0/dw);
+	//printf(", after scaling is %g (%g, %g)\n",dm_normest(ham),wb,dw);
+	cm_mulc(prop,Cexpi(wb));
+
+	TIMING_TOC(tv1,tv2,"chebyshev3 preparations");
+
+	mat_double *T0 = double_matrix(dim,dim,MAT_DENSE,0,ham->basis);
+	dm_zero(T0);
+	mat_double *T1 = dm_dup2(ham);
+	mat_complx *U = complx_matrix(dim,dim,MAT_DENSE,0,ham->basis);
+	cm_zero(U);
+	double aa = bessj(0,dw);
+	for (i=0; i<len; i+=dim+1) {
+		T0->data[i] = 1.0;
+		U->data[i].re = aa;
+	}
+
+	aa = 2.0*bessj(1,dw);
+	cblas_daxpy(len,aa,T1->data,1,(double*)(U->data)+1,2);
+
+	double norm = fabs(dm_max(T1)*aa);
+	int iter = 1;
+	mat_double *p0 = T0;
+	mat_double *p1 = T1;
+	mat_double *pdum;
+	while ( norm > TOL ) {
+		iter++;
+		if (iter > 20) {
+			fprintf(stderr,"ERROR: prop_cheby3_real - exceeded max iter 20\n");
+			exit(1);
+		}
+		aa = 2.0*bessj(iter,dw);
+		dm_mm(2.0,ham,p1,-1.0,p0); // this is faster!!!
+		//cblas_dsymm(CblasColMajor,CblasLeft,CblasUpper,dim,dim,2.0,ham->data,dim,p1->data,dim,-1.0,p0->data,dim);
+		pdum = p0; p0 = p1; p1 = pdum;
+		switch (iter % 4) {
+		case 0:
+			cblas_daxpy(len,aa,p1->data,1,(double*)(U->data),2);
+			break;
+		case 1:
+			cblas_daxpy(len,aa,p1->data,1,(double*)(U->data)+1,2);
+			break;
+		case 2:
+			cblas_daxpy(len,-aa,p1->data,1,(double*)(U->data),2);
+			break;
+		case 3:
+			cblas_daxpy(len,-aa,p1->data,1,(double*)(U->data)+1,2);
+		}
+		norm = fabs(dm_max(p1)*aa);
+		printf("\t iter %d.) T_norm = %g, Ji = %g, norm = %g\n",iter,fabs(dm_max(p1)),aa,norm);
+	}
+	//printf("prop_cheby_real done in %d iterations\n",iter);
+
+	free_double_matrix(T0);
+	free_double_matrix(T1);
+
+	TIMING_TOC(tv2,tv1,"chebyshev3 iterations");
+
+	// update propagator
+	cm_multo_rev(prop,U);
+	free_complx_matrix(U);
+}
+
+
 
 void prop_diag1_real(mat_complx *prop, mat_double *ham, double dt)
 {
@@ -5059,7 +5354,8 @@ void prop_diag2_real(mat_complx *prop, mat_double *ham, double dt)
 	double *work = (double*)malloc( lwork*sizeof(double) );
 	liwork = iwkopt;
 	int *iwork = (int*)malloc( liwork*sizeof(int) );
-	dsyevr_("V","I","U",&dim,ham->data,&dim,NULL,NULL,&i,&dim,&abstol,&j,
+	// using wkopt as dummy variable to prevent segfault on some systems
+	dsyevr_("V","I","U",&dim,ham->data,&dim,&wkopt,&wkopt,&i,&dim,&abstol,&j,
 			eigs,T->data,&dim,isupp,work,&lwork,iwork,&liwork, &info);
 	// j is total number of eigval found
 	if (info != 0) {
@@ -5180,7 +5476,7 @@ void prop_real(mat_complx *prop, mat_double *ham, double dt, int method)
 				prop_pade_real(prop,ham,dt);
 				break; }
 			case 2: {// via Chebyshev
-				prop_cheby_real(prop,ham,dt);
+				prop_cheby2_real(prop,ham,dt);
 				break; }
 			case 3: { // via Taylor
 				const double norm_tol = 1.0e-6;
@@ -5190,7 +5486,7 @@ void prop_real(mat_complx *prop, mat_double *ham, double dt, int method)
 				const int len = dim*dim;
 				/* scaling step */
 				scaling = dm_normest(ham)*dt;
-				//printf("prop_real: dense taylor, Hamiltonian largest eigval estimate = %g\n",scaling);
+				printf("prop_real: dense taylor, Hamiltonian norm estimate = %g\n",scaling);
 				if (scaling > 1) {
 					nsq = (int)ceil(log(scaling)/log(2.0));
 					scaling = pow(2,nsq);
@@ -5198,7 +5494,7 @@ void prop_real(mat_complx *prop, mat_double *ham, double dt, int method)
 					nsq = 0;
 					scaling = 1;
 				}
-				DEBUGPRINT("prop_real: dense taylor, will do %d squarings\n",nsq);
+				printf("prop_real: dense taylor, will do %d squarings\n",nsq);
 				dm_muld(ham,-dt/scaling);
 				//if (prop->type != MAT_DENSE) {
 				//	mat_complx *dum = complx_matrix(dim,dim,MAT_DENSE, dim, ham->basis);
@@ -5242,7 +5538,7 @@ void prop_real(mat_complx *prop, mat_double *ham, double dt, int method)
 					next_term_norm = dm_normest(next_term)*fac;
 				}
 				free_double_matrix(next_term);
-				DEBUGPRINT("prop_real dense taylor: %d Taylor steps\n",n-1);
+				printf("prop_real dense taylor: %d Taylor steps\n",n-1);
 				//QueryPerformanceCounter(&tv3);
 				if (nsq) {
 					for (n=0; n<nsq; n++) {
@@ -5271,7 +5567,7 @@ void prop_real(mat_complx *prop, mat_double *ham, double dt, int method)
 				fprintf(stderr,"prop_real error: Pade method not allowed for sparse matrices, use Chebyshev or Taylor\n");
 				exit(-1);
 			case 2: { // Chebyshev
-				prop_cheby_real(prop,ham,dt);
+				prop_cheby3_real(prop,ham,dt);
 				break; }
 			case 3: { // Taylor
 				const double norm_tol = 1.0e-6;

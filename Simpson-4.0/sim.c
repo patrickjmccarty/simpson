@@ -463,6 +463,23 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
   s->FWTASG_icol = NULL;
   s->FWTASG_irow = NULL;
 
+
+  /* hack for FFTW thread safety - create plan only once and remember it */
+  if (s->domain == 1) { /* calculations in frequency domain */
+	  if (s->imethod == M_DIRECT_FREQ) {
+		  i = s->points_per_cycle;
+	  } else {
+		  i = s->ngamma;
+	  }
+	  fftw_complex *fftin1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * i);
+	  fftw_complex *fftout1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * i);
+	  s->fftw3_plan = fftw_plan_dft_1d(i, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
+	  fftw_free(fftin1);
+	  fftw_free(fftout1);
+  } else {
+	  s->fftw3_plan = NULL;
+  }
+
   return s;
 }
 
@@ -589,6 +606,11 @@ void sim_destroy(Sim_info* s, int this_is_copy)
 	  s->FWTASG_icol = NULL;
   }
   if (s->crmap != NULL) free(s->crmap);
+
+  if (s->fftw3_plan != NULL) {
+	  fftw_destroy_plan(s->fftw3_plan);
+	  s->fftw3_plan = NULL;
+  }
 
 }
 

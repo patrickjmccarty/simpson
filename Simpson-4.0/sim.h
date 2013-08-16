@@ -29,6 +29,7 @@
 #include "cryst.h"
 #include "spinsys_struct.h"
 #include "matrix.h"
+#include "fftw3.h"
 
 typedef struct _Shift {
 	int nuc;
@@ -110,6 +111,7 @@ typedef struct _Sim_info {
   double *ASG_freq, ASG_period;
   complx *ASG_ampl, *FWT_lam, *FWT_frs;
   int FWTASG_nnz, *FWTASG_irow, *FWTASG_icol, icr_done;
+  fftw_plan fftw3_plan;
 } Sim_info;
 
 #define MAXSTO 1000

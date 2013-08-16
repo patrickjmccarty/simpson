@@ -3304,7 +3304,8 @@ void scan_contrib_freq_ED(mat_complx **A, int Ng, int *irow, int *icol) {
     TIMING_TOC(tv1,tv2,"gCOMPUTE freq EDsym scan contrib");
 }
 
-complx * qdata_EDsym(double *freq, double dtg, mat_complx **A, int Ng, int *irow, int *icol) {
+//complx * qdata_EDsym(double *freq, double dtg, mat_complx **A, int Ng, int *irow, int *icol) {
+complx * qdata_EDsym(double *freq, double dtg, mat_complx **A, int Ng, int *irow, int *icol, fftw_plan plan) {
 	int m, r, c, i;
 	int *ic;
 	int matdim = A[0]->row;
@@ -3317,7 +3318,7 @@ complx * qdata_EDsym(double *freq, double dtg, mat_complx **A, int Ng, int *irow
 
 	fftw_complex *fftin = (fftw_complex*) fftw_malloc(sizeof(fftw_complex)*Ng*2);
 	fftw_complex *fftout = fftin + Ng;
-	fftw_plan plan = fftw_plan_dft_1d(Ng, fftin, fftout, FFTW_FORWARD, FFTW_ESTIMATE);
+	//fftw_plan plan = fftw_plan_dft_1d(Ng, fftin, fftout, FFTW_FORWARD, FFTW_ESTIMATE);
     if ( !fftin || !fftout || !plan ) {
     	fprintf(stderr,"Error: gCOMPUTE freq - no more memory for fftw structures");
     	exit(1);
@@ -3345,7 +3346,8 @@ complx * qdata_EDsym(double *freq, double dtg, mat_complx **A, int Ng, int *irow
     			phmul.im = dum*ph.im + phmul.im*ph.re;
     			//phmul = Cmul(phmul,ph);
     		}
-    		fftw_execute(plan);
+    		//fftw_execute(plan);
+    		fftw_execute_dft(plan,fftin,fftout);
     		//printf("\nr = %d, c = %d : ",r,*ic);
     		for (i=0; i<Ng; i++) {
     			qdata[i*nnz+m].re = fftout[i][0];
@@ -3358,7 +3360,7 @@ complx * qdata_EDsym(double *freq, double dtg, mat_complx **A, int Ng, int *irow
     	}
     }
     fftw_free(fftin);
-    fftw_destroy_plan(plan);
+    //fftw_destroy_plan(plan);
 
     TIMING_TOC(tv1,tv2,"gCOMPUTE freq EDsym FFT of Q matrix");
     return qdata;
@@ -3425,7 +3427,8 @@ void gcompute_spc(Sim_info *sim, Sim_wsp *wsp) {
 	if (sim->EDsymmetry == 1) {
 		scan_contrib_freq_ED(&wsp->matrix[ACQBLOCK_STO_INI+Ng],Ng,irow,icol);
 	    nnz = irow[matdim] - 1;
-	    complx *qdata =  qdata_EDsym(freq, dtg, &wsp->matrix[ACQBLOCK_STO_INI+Ng], Ng, irow, icol);
+	    //complx *qdata =  qdata_EDsym(freq, dtg, &wsp->matrix[ACQBLOCK_STO_INI+Ng], Ng, irow, icol);
+	    complx *qdata =  qdata_EDsym(freq, dtg, &wsp->matrix[ACQBLOCK_STO_INI+Ng], Ng, irow, icol,sim->fftw3_plan);
 	    mat_complx dum;
 	    dum.irow = irow;
 	    dum.icol = icol;
@@ -3462,13 +3465,16 @@ void gcompute_spc(Sim_info *sim, Sim_wsp *wsp) {
 		free(qdata);
 		// END of ED symmetry calculation
 	} else {
+		printf("zde jsme\n");
 	    fftw_complex *fftin1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * Ng);
 	    fftw_complex *fftout1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * Ng);
-	    fftw_plan p1 = fftw_plan_dft_1d(Ng, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
+	    //fftw_plan p1 = fftw_plan_dft_1d(Ng, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
 	    fftw_complex *fftin2 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * Ng);
 	    fftw_complex *fftout2 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * Ng);
-	    fftw_plan p2 = fftw_plan_dft_1d(Ng, fftin2, fftout2, FFTW_FORWARD, FFTW_ESTIMATE);
-	    if (!fftin1 || !fftin2 || !fftout1 || !fftout2 || !p1 || !p2) {
+	    //fftw_plan p2 = fftw_plan_dft_1d(Ng, fftin2, fftout2, FFTW_FORWARD, FFTW_ESTIMATE);
+	    assert(sim->fftw3_plan != NULL);
+	    //if (!fftin1 || !fftin2 || !fftout1 || !fftout2 || !p1 || !p2) {
+	    if (!fftin1 || !fftin2 || !fftout1 || !fftout2) {
 	    	fprintf(stderr,"Error: gCOMPUTE freq - no more memory for FFTW structures\n");
 	    	exit(1);
 	    }
@@ -3490,8 +3496,10 @@ void gcompute_spc(Sim_info *sim, Sim_wsp *wsp) {
 	    			fftin2[i][1] = zz2.re*phmul.im + zz2.im*phmul.re;
 	    			phmul = Cmul(phmul,ph);
 	    		}
-	    		fftw_execute(p1);
-	    		fftw_execute(p2);
+	    		//fftw_execute(p1);
+	    		fftw_execute_dft(sim->fftw3_plan,fftin1,fftout1);
+	    		//fftw_execute(p2);
+	    		fftw_execute_dft(sim->fftw3_plan,fftin2,fftout2);
 				for (i=0; i<Ng; i++) {
 					int idx = (i + Ng/2 + 1) % Ng;
 					double zzre = fftout1[idx][0]*fftout2[idx][0] + fftout1[idx][1]*fftout2[idx][1];
@@ -3510,8 +3518,8 @@ void gcompute_spc(Sim_info *sim, Sim_wsp *wsp) {
 				ic++;
 	    	}
 	    }
-	    fftw_destroy_plan(p1);
-	    fftw_destroy_plan(p2);
+	    //fftw_destroy_plan(p1);
+	    //fftw_destroy_plan(p2);
 	    fftw_free(fftin1); fftw_free(fftout1);
 	    fftw_free(fftin2); fftw_free(fftout2);
 	    // END on calculations without ED symmetry
@@ -3596,8 +3604,9 @@ void gcompute_ASGdata(Sim_info *sim, Sim_wsp *wsp) {
 	nnz = sim->FWTASG_nnz;
 
 	if (sim->EDsymmetry == 1) {
-	    complx *qdata =  qdata_EDsym(freq, dtg, &wsp->matrix[ACQBLOCK_STO_INI+Ng], Ng, irow, icol);
-	    mat_complx dum;
+	    //complx *qdata =  qdata_EDsym(freq, dtg, &wsp->matrix[ACQBLOCK_STO_INI+Ng], Ng, irow, icol);
+		complx *qdata =  qdata_EDsym(freq, dtg, &wsp->matrix[ACQBLOCK_STO_INI+Ng], Ng, irow, icol,sim->fftw3_plan);
+		mat_complx dum;
 	    dum.irow = irow;
 	    dum.icol = icol;
 	    dum.type = MAT_SPARSE;
@@ -3628,11 +3637,13 @@ void gcompute_ASGdata(Sim_info *sim, Sim_wsp *wsp) {
 	} else {
 	    fftw_complex *fftin1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * Ng);
 	    fftw_complex *fftout1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * Ng);
-	    fftw_plan p1 = fftw_plan_dft_1d(Ng, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
+	    //fftw_plan p1 = fftw_plan_dft_1d(Ng, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
 	    fftw_complex *fftin2 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * Ng);
 	    fftw_complex *fftout2 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * Ng);
-	    fftw_plan p2 = fftw_plan_dft_1d(Ng, fftin2, fftout2, FFTW_FORWARD, FFTW_ESTIMATE);
-	    if (!fftin1 || !fftin2 || !fftout1 || !fftout2 || !p1 || !p2) {
+	    //fftw_plan p2 = fftw_plan_dft_1d(Ng, fftin2, fftout2, FFTW_FORWARD, FFTW_ESTIMATE);
+	    assert(sim->fftw3_plan != NULL);
+	    //if (!fftin1 || !fftin2 || !fftout1 || !fftout2 || !p1 || !p2) {
+	    if (!fftin1 || !fftin2 || !fftout1 || !fftout2) {
 	    	fprintf(stderr,"Error: gCOMPUTE freq - no more memory for FFTW structures\n");
 	    	exit(1);
 	    }
@@ -3654,8 +3665,10 @@ void gcompute_ASGdata(Sim_info *sim, Sim_wsp *wsp) {
 	    			fftin2[i][1] = zz2.re*phmul.im + zz2.im*phmul.re;
 	    			phmul = Cmul(phmul,ph);
 	    		}
-	    		fftw_execute(p1);
-	    		fftw_execute(p2);
+	    		//fftw_execute(p1);
+	    		fftw_execute_dft(sim->fftw3_plan,fftin1,fftout1);
+	    		//fftw_execute(p2);
+	    		fftw_execute_dft(sim->fftw3_plan,fftin2,fftout2);
 				for (i=0; i<Ng; i++) {
 					int idx = (i + Ng/2 + 1) % Ng;
 					complx *zz1 = &sim->ASG_ampl[(wsp->cryst_idx-1)*nnz*Ng+m*Ng+i];
@@ -3666,8 +3679,8 @@ void gcompute_ASGdata(Sim_info *sim, Sim_wsp *wsp) {
 				m++;
 	    	}
 	    }
-	    fftw_destroy_plan(p1);
-	    fftw_destroy_plan(p2);
+	    //fftw_destroy_plan(p1);
+	    //fftw_destroy_plan(p2);
 	    fftw_free(fftin1); fftw_free(fftout1);
 	    fftw_free(fftin2); fftw_free(fftout2);
 	    // END on calculations without ED symmetry
@@ -3959,10 +3972,10 @@ void collect_spc_interpol_all(int icr, Sim_info *sim, complx *fid)
 	binsize = sim->sw*2*M_PI/sim->np;
 	fftw_complex *fftin1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex)*Ng*4);
 	fftw_complex *fftout1 = fftin1 + Ng;
-	fftw_plan p1 = fftw_plan_dft_1d(Ng, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
+	//fftw_plan p1 = fftw_plan_dft_1d(Ng, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
 	fftw_complex *fftin2 = fftin1 + 2*Ng;
 	fftw_complex *fftout2 = fftin1 + 3*Ng;
-	fftw_plan p2 = fftw_plan_dft_1d(Ng, fftin2, fftout2, FFTW_FORWARD, FFTW_ESTIMATE);
+	//fftw_plan p2 = fftw_plan_dft_1d(Ng, fftin2, fftout2, FFTW_FORWARD, FFTW_ESTIMATE);
 
 	if (sim->EDsymmetry ==  1) {
 		ic = sim->FWTASG_icol;
@@ -3987,8 +4000,10 @@ void collect_spc_interpol_all(int icr, Sim_info *sim, complx *fid)
 					}
 					phmul = Cmul(phmul,ph);
 				}
-				fftw_execute(p1);
-				if (dataidx2 >=0) fftw_execute(p2);
+				//fftw_execute(p1);
+				fftw_execute_dft(sim->fftw3_plan,fftin1,fftout1);
+				//if (dataidx2 >=0) fftw_execute(p2);
+				if (dataidx2 >=0) fftw_execute_dft(sim->fftw3_plan,fftin2,fftout2);
 				for (i=0; i<Ng; i++) {
 					bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
 					while (bin < 1) bin += sim->np;
@@ -4032,9 +4047,11 @@ void collect_spc_interpol_all(int icr, Sim_info *sim, complx *fid)
 					phmul = Cmul(phmul,ph);
 				}
 				//printf("...done");
-				fftw_execute(p1);
+				//fftw_execute(p1);
+				fftw_execute_dft(sim->fftw3_plan,fftin1,fftout1);
 				//printf("...done");
-				fftw_execute(p2);
+				//fftw_execute(p2);
+				fftw_execute_dft(sim->fftw3_plan,fftin2,fftout2);
 				//printf("...done");
 				for (i=0; i<Ng; i++) {
 					int idx = (i + Ng/2 + 1) % Ng;
@@ -4056,8 +4073,8 @@ void collect_spc_interpol_all(int icr, Sim_info *sim, complx *fid)
 			}
 		}
 	}
-	fftw_destroy_plan(p1);
-	fftw_destroy_plan(p2);
+	//fftw_destroy_plan(p1);
+	//fftw_destroy_plan(p2);
 	fftw_free(fftin1);
     free(freq);
 
@@ -4204,10 +4221,11 @@ void collect_spc_interpol_lam(int icr, Sim_info *sim, complx *fid)
 	binsize = sim->sw*2*M_PI/sim->np;
 	fftw_complex *fftin1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex)*Ng*4);
 	fftw_complex *fftout1 = fftin1 + Ng;
-	fftw_plan p1 = fftw_plan_dft_1d(Ng, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
+	//fftw_plan p1 = fftw_plan_dft_1d(Ng, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
 	fftw_complex *fftin2 = fftin1 + 2*Ng;
 	fftw_complex *fftout2 = fftin1 + 3*Ng;
-	fftw_plan p2 = fftw_plan_dft_1d(Ng, fftin2, fftout2, FFTW_FORWARD, FFTW_ESTIMATE);
+	//fftw_plan p2 = fftw_plan_dft_1d(Ng, fftin2, fftout2, FFTW_FORWARD, FFTW_ESTIMATE);
+	assert(sim->fftw3_plan != NULL);
 
 	if (sim->EDsymmetry ==  1) {
 		ic = sim->FWTASG_icol;
@@ -4230,8 +4248,10 @@ void collect_spc_interpol_lam(int icr, Sim_info *sim, complx *fid)
 					}
 					phmul = Cmul(phmul,ph);
 				}
-				fftw_execute(p1);
-				if (dataidx2 >=0) fftw_execute(p2);
+				//fftw_execute(p1);
+				fftw_execute_dft(sim->fftw3_plan,fftin1,fftout1);
+				//if (dataidx2 >=0) fftw_execute(p2);
+				if (dataidx2 >=0) fftw_execute_dft(sim->fftw3_plan,fftin2,fftout2);
 				for (i=0; i<Ng; i++) {
 					bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
 					while (bin < 1) bin += sim->np;
@@ -4272,8 +4292,10 @@ void collect_spc_interpol_lam(int icr, Sim_info *sim, complx *fid)
 					fftin2[i][1] = zz2->re*phmul.im + zz2->im*phmul.re;
 					phmul = Cmul(phmul,ph);
 				}
-				fftw_execute(p1);
-				fftw_execute(p2);
+				//fftw_execute(p1);
+				fftw_execute_dft(sim->fftw3_plan,fftin1,fftout1);
+				//fftw_execute(p2);
+				fftw_execute_dft(sim->fftw3_plan,fftin2,fftout2);
 				for (i=0; i<Ng; i++) {
 					int idx = (i + Ng/2 + 1) % Ng;
 					double zzre = fftout1[idx][0]*fftout2[idx][0] + fftout1[idx][1]*fftout2[idx][1];
@@ -4293,8 +4315,8 @@ void collect_spc_interpol_lam(int icr, Sim_info *sim, complx *fid)
 			}
 		}
 	}
-	fftw_destroy_plan(p1);
-	fftw_destroy_plan(p2);
+	//fftw_destroy_plan(p1);
+	//fftw_destroy_plan(p2);
 	fftw_free(fftin1);
     free(freq);
 
@@ -4340,11 +4362,12 @@ void convert_FWTtoASG_gcompute(Sim_info *sim, int icr)
 
     fftw_complex *fftin1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex)*Ng*4);
     fftw_complex *fftout1 = fftin1 + Ng;
-    fftw_plan p1 = fftw_plan_dft_1d(Ng, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
+    //fftw_plan p1 = fftw_plan_dft_1d(Ng, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
     fftw_complex *fftin2 = fftin1 + 2*Ng;
     fftw_complex *fftout2 = fftin1 + 3*Ng;
-    fftw_plan p2 = fftw_plan_dft_1d(Ng, fftin2, fftout2, FFTW_FORWARD, FFTW_ESTIMATE);
-    if (!fftin1 || !p1 || !p2) {
+    //fftw_plan p2 = fftw_plan_dft_1d(Ng, fftin2, fftout2, FFTW_FORWARD, FFTW_ESTIMATE);
+    //if (!fftin1 || !p1 || !p2) {
+    if (!fftin1) {
     	fprintf(stderr,"Error: convert_FWTtoASG_gcomput - no more memory for FFTW structures\n");
     	exit(1);
     }
@@ -4373,8 +4396,10 @@ void convert_FWTtoASG_gcompute(Sim_info *sim, int icr)
 	    			}
 	    			phmul = Cmul(phmul,ph);
 	    		}
-	    		fftw_execute(p1);
-	    		if (m2 >= 0) fftw_execute(p2);
+	    		//fftw_execute(p1);
+	    		fftw_execute_dft(sim->fftw3_plan,fftin1,fftout1);
+	    		//if (m2 >= 0) fftw_execute(p2);
+	    		if (m2 >= 0) fftw_execute_dft(sim->fftw3_plan,fftin2,fftout2);
 				for (i=0; i<Ng; i++) {
 					int idx = (i + Ng/2 + 1) % Ng;
 					complx *zz1 = &sim->ASG_ampl[(icr-1)*nnz*Ng+m*Ng+i];
@@ -4411,8 +4436,10 @@ void convert_FWTtoASG_gcompute(Sim_info *sim, int icr)
 	    			fftin2[i][1] = zz2->re*phmul.im + zz2->im*phmul.re;
 	    			phmul = Cmul(phmul,ph);
 	    		}
-	    		fftw_execute(p1);
-	    		fftw_execute(p2);
+	    		//fftw_execute(p1);
+	    		fftw_execute_dft(sim->fftw3_plan,fftin1,fftout1);
+	    		//fftw_execute(p2);
+	    		fftw_execute_dft(sim->fftw3_plan,fftin2,fftout2);
 				for (i=0; i<Ng; i++) {
 					int idx = (i + Ng/2 + 1) % Ng;
 					complx *zz1 = &sim->ASG_ampl[(icr-1)*nnz*Ng+m*Ng+i];
@@ -4428,8 +4455,8 @@ void convert_FWTtoASG_gcompute(Sim_info *sim, int icr)
 
 	// freeing memory
 	free(freq);
-    fftw_destroy_plan(p1);
-    fftw_destroy_plan(p2);
+    //fftw_destroy_plan(p1);
+    //fftw_destroy_plan(p2);
     fftw_free(fftin1);
 
 }
