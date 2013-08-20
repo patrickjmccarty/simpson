@@ -111,7 +111,7 @@ typedef struct _Sim_info {
   double *ASG_freq, ASG_period;
   complx *ASG_ampl, *FWT_lam, *FWT_frs;
   int FWTASG_nnz, *FWTASG_irow, *FWTASG_icol, icr_done;
-  fftw_plan fftw3_plan;
+  fftw_plan *fftw_plans;
 } Sim_info;
 
 #define MAXSTO 1000

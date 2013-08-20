@@ -50,6 +50,8 @@
 #define SPINRATE_SMALL 0.001
 #define NOTSET -123.456
 
+extern glob_info_type glob_info;
+
 void readsys(Tcl_Interp* interp,Sim_info * s);
 
 /* finds the number of the observable nucleus given the detect operator*/
@@ -158,7 +160,7 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
 		  } else if ( !strcmp(buf,"spinach")){
 		    s->imethod=M_SPINACH;
 		  } else if (!strncmp(buf,"diag",4)) {
-			  s->propmethod = 0;
+			  s->propmethod = 0; // this uses dsyevr that might not be thread safe
 		  } else if (!strncmp(buf,"pade",4)) {
 			  s->propmethod = 1;
 		  } else if (!strncmp(buf,"cheb",4)) {
@@ -167,6 +169,8 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
 			  s->propmethod = 3;
 		  } else if (!strncmp(buf,"lanczos",7)) {
 			  s->propmethod = 4;
+		  } else if (!strncmp(buf,"dsyev",5)) {
+			  s->propmethod = 5; // diag with dsyev found always thread safe but slower
 		  } else if (!strncmp(buf,"sparse",6)) {
 			  s->sparse = 1;
 		  } else if (!strncmp(buf,"block_diag",10)) {
@@ -473,11 +477,14 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
 	  }
 	  fftw_complex *fftin1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * i);
 	  fftw_complex *fftout1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * i);
-	  s->fftw3_plan = fftw_plan_dft_1d(i, fftin1, fftout1, FFTW_FORWARD, FFTW_ESTIMATE);
+	  s->fftw_plans = (fftw_plan*)malloc(glob_info.num_threads*sizeof(fftw_plan));
+	  int kk;
+	  //printf("\nCreating %d FFTW plans with size of %d \n",glob_info.num_threads,i);
+	  for (kk=0; kk<glob_info.num_threads; kk++) s->fftw_plans[kk] = fftw_plan_dft_1d(i, fftin1, fftout1, FFTW_FORWARD, FFTW_MEASURE);
 	  fftw_free(fftin1);
 	  fftw_free(fftout1);
   } else {
-	  s->fftw3_plan = NULL;
+	  s->fftw_plans = NULL;
   }
 
   return s;
@@ -607,9 +614,10 @@ void sim_destroy(Sim_info* s, int this_is_copy)
   }
   if (s->crmap != NULL) free(s->crmap);
 
-  if (s->fftw3_plan != NULL) {
-	  fftw_destroy_plan(s->fftw3_plan);
-	  s->fftw3_plan = NULL;
+  if (s->fftw_plans != NULL) {
+	  for (i=0; i<glob_info.num_threads; i++) fftw_destroy_plan(s->fftw_plans[i]);
+	  free(s->fftw_plans);
+	  s->fftw_plans = NULL;
   }
 
 }

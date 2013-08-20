@@ -649,9 +649,9 @@ void thread_work_interpol_calcfid(int thread_id)
 			break;
 		case M_GCOMPUTE_FREQ:
 			if (sim->interpolation == 1) {
-				collect_spc_interpol_all(icr, sim, fid);
+				collect_spc_interpol_all(icr, sim, fid,thread_id);
 			} else {
-				collect_spc_interpol_lam(icr, sim, fid);
+				collect_spc_interpol_lam(icr, sim, fid,thread_id);
 			}
 			break;
 		case M_DIRECT_TIME:
@@ -684,7 +684,7 @@ void thread_work_FWTtoASG(int thread_id)
 			exit(1);
 			break;
 		case M_GCOMPUTE_FREQ:
-			convert_FWTtoASG_gcompute(thrd.sim,icr);
+			convert_FWTtoASG_gcompute(thrd.sim,icr,thread_id);
 			break;
 		case M_DIRECT_TIME:
 			fprintf(stderr,"Error: thread_work_FWTtoASG - wrong imethod %d\n",sim->imethod);
@@ -852,7 +852,7 @@ void thread_work_ASG_interpol(int thread_id)
 
 void simpson_thread_slave(void *thr_id)
 {
-	int thread_id = (int)thr_id;
+	int thread_id = *(int*)thr_id;
 
 	DEBUGPRINT("Starting simpson_thread_slave %d\n",thread_id);
 	//printf("DBGinfo: starting simpson_thread_slave rank %d, thread %d\n",glob_info.mpi_rank, thread_id);

@@ -5128,12 +5128,12 @@ void prop_cheby2_real(mat_complx *prop, mat_double *ham, double dt)
 	//dm_print(ham,"HAMILTONIAN");
 	/* scaling step */
 	double scaling = dm_normest(ham)*dt;
-	printf("prop_cheby2_real: Hamiltonian norm estimate = %g\n",scaling);
+	//printf("prop_cheby2_real: Hamiltonian norm estimate = %g\n",scaling);
 	if (scaling > 1) {
 		nsq = (int)ceil(log(scaling)/log(2.0));
 		scaling = pow(2,nsq);
 	}
-	printf("\t --> will do %d squarings\n",nsq);
+	//printf("\t --> will do %d squarings\n",nsq);
 	dm_muld(ham,-dt/scaling/dw);
 
 	TIMING_TIC(tv1);
@@ -5181,7 +5181,7 @@ void prop_cheby2_real(mat_complx *prop, mat_double *ham, double dt)
 			cblas_daxpy(len,-aa,p1->data,1,(double*)(U->data)+1,2);
 		}
 		norm = fabs(dm_max(p1)*aa);
-		printf("\t iter %d.) T_norm = %g, Ji = %g, norm = %g\n",iter,fabs(dm_max(p1)),aa,norm);
+		//printf("\t iter %d.) T_norm = %g, Ji = %g, norm = %g\n",iter,fabs(dm_max(p1)),aa,norm);
 	}
 	//printf("prop_cheby_real done in %d iterations\n",iter);
 
@@ -5215,12 +5215,12 @@ void prop_cheby3_real(mat_complx *prop, mat_double *ham, double dt)
 	TIMING_INIT_VAR2(tv1,tv2);
 	TIMING_TIC(tv1);
 
-	assert(ham->type == MAT_DENSE);
+	//assert(ham->type == MAT_DENSE);
 
 	//printf("\tprop_cheby IN: ham is %s, prop is %s\n",matrix_type(ham->type),matrix_type(prop->type));
 	dm_muld(ham,-dt);
 	//dm_print(ham,"HAMILTONIAN");
-	printf("\t--> ham norm is %g",dm_normest(ham));
+	//printf("\t--> ham norm is %g",dm_normest(ham));
 	dm_lams(ham,&lmax, &lmin);
 	double dw = 0.5*(lmax-lmin);
 	double wb = 0.5*(lmax+lmin);
@@ -5274,7 +5274,7 @@ void prop_cheby3_real(mat_complx *prop, mat_double *ham, double dt)
 			cblas_daxpy(len,-aa,p1->data,1,(double*)(U->data)+1,2);
 		}
 		norm = fabs(dm_max(p1)*aa);
-		printf("\t iter %d.) T_norm = %g, Ji = %g, norm = %g\n",iter,fabs(dm_max(p1)),aa,norm);
+		//printf("\t iter %d.) T_norm = %g, Ji = %g, norm = %g\n",iter,fabs(dm_max(p1)),aa,norm);
 	}
 	//printf("prop_cheby_real done in %d iterations\n",iter);
 
@@ -5468,7 +5468,7 @@ void prop_real(mat_complx *prop, mat_double *ham, double dt, int method)
 		case MAT_DENSE : {
 			DEBUGPRINT("prop_real point 2\n");
 			switch (method) {
-			case 0: {// via diagonalization
+			case 0: {// via diagonalization using dsyevr (might not be thread safe with some LAPACK libs)
 				prop_diag2_real(prop,ham,dt);
 				break; }
 			case 1: {// via scaling & squaring with Pade approx
@@ -5553,8 +5553,13 @@ void prop_real(mat_complx *prop, mat_double *ham, double dt, int method)
 				//printf("\t\t\tsquaring time: %.9f\n",((float)(tv4.QuadPart-tv3.QuadPart))/(float)tickpsec.QuadPart);
 				break; }
 			case 4: // via Lanczos
+				fprintf(stderr,"prop_real error: lanczos method not implemented yet\n");
+				exit(-1);
+			case 5: {// via diagonalization using dsyev (found thread safe but slower)
+				prop_diag1_real(prop,ham,dt);
+				break; }
 			default:
-				fprintf(stderr,"prop_real error: unknown calculation method (%d), use diagonalization, Pade, Chebyshev, Taylor or Lanczos\n",method);
+				fprintf(stderr,"prop_real error: unknown calculation method (%d), use diagonalization, pade, chebyshev, taylor or lanczos\n",method);
 				exit(-1);
 			}
 			break; }

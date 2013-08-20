@@ -169,7 +169,7 @@ int main (int argc,char *argv[])
 		pthread_attr_init(&threadattr);
 		pthread_attr_setdetachstate(&threadattr, PTHREAD_CREATE_JOINABLE);
 		for (i=0; i<num_threads; i++) {
-			pthread_create(&threads[i], &threadattr, (void *)simpson_thread_slave, (void *)thread_id[i]);
+			pthread_create(&threads[i], &threadattr, (void *)simpson_thread_slave, (void *)(thread_id+i));
 		}
 
 	   if (process_id == 0) {

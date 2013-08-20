@@ -829,6 +829,7 @@ void _pulse_simple(Sim_info *sim, Sim_wsp *wsp, double duration)
 		//blk_dm_print(wsp->sumHrf,"_pulse HAM_rf");
 		blk_dm_multod(wsp->ham_blk,wsp->sumHrf,1.0);
 		//blk_dm_print(wsp->ham_blk,"_pulse HAM_TOT");
+		//printf("thread %d, cryst %d: i %d: Ham(1,1) = %10.5f\n",wsp->thread_id,wsp->cryst_idx,i,blk_dm_getelem(wsp->ham_blk,1,1));
 		//if (i == 1) {
 			blk_prop_real(wsp->dU,wsp->ham_blk,dt,sim->propmethod);
 		//} else {
@@ -836,6 +837,9 @@ void _pulse_simple(Sim_info *sim, Sim_wsp *wsp, double duration)
 		//	update_propagator(wsp->dU, wsp->tmpU, sim, NULL);
 		//}
 		wsp->t += dt_us;
+		//complx cprt = blk_cm_getelem(wsp->dU,1,1);
+		//printf("thread %d, cryst %d: i %d: dU(1,1) = (%10.5f %10.5f)\n",wsp->thread_id,wsp->cryst_idx,i,cprt.re,cprt.im);
+
 	}
 	//exit(1);
 	//blk_cm_print(wsp->dU,"_pulse pre-phase propagator");
