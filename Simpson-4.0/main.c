@@ -114,10 +114,10 @@ int main (int argc,char *argv[])
 	   }
 	   /* pass input arguments to Tcl interpreter as globals */
 	   DEBUGPRINT("Main: passing input arguments to Tcl interpreter\n");
-	   sprintf(buf,"%d",argc-2);
+	   sprintf(buf,"%d",argc-1);
 	   Tcl_SetVar(interp,"argc",buf,TCL_GLOBAL_ONLY);
 	   Tcl_SetVar(interp,"argv0",argv[1],TCL_GLOBAL_ONLY);
-	   for (i=2; i<argc; i++) {
+	   for (i=1; i<argc; i++) {
 		   Tcl_SetVar(interp,"argv",argv[i],TCL_GLOBAL_ONLY|TCL_LIST_ELEMENT|TCL_APPEND_VALUE);
 	   }
 	   /* evaluate input file */
