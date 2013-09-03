@@ -21,7 +21,7 @@
 #else
 #include "cblas.h"
 #endif
-#ifndef INTEL_MKL
+#if !defined(INTEL_MKL) && !defined(__APPLE__)
 	void zgeev_(const char *jobl, const char *jobr, const int *d1, void *data,const int *d2,
 			void *eigs, void *vl, const int *dvl,void *vr, const int *dvr, void *wsp,
 			const int *lwsp, double *rwork, int *info);
