@@ -1142,6 +1142,7 @@ int tclOffset(ClientData data,Tcl_Interp* interp, int argc, Tcl_Obj *argv[])
   offset = double_vector(nchan);
   for (i=1;i<=nchan;i++) {
     if (Tcl_GetDoubleFromObj(interp,argv[i],&offset[i]) != TCL_OK) return TCL_ERROR;
+    offset[i] *= 2.0*M_PI;
     off += fabs(offset[i]);
   }
   if (off < TINY) {
