@@ -59,6 +59,7 @@
 #include "rfshapes.h"
 #include "OCroutines.h"
 #include "fidcalc.h"
+#include "pthread_barrier_mac.h"
 
 //extern void simpson_nfft_test(void);
 
