@@ -44,6 +44,7 @@
 #include "rfshapes.h"
 #include "cryst.h"
 
+#include "pthread_barrier_mac.h"
 
 int verbose = 0;
 int various = 0;
@@ -70,7 +71,6 @@ int main (int argc,char *argv[])
 	pthread_t *threads;
 	pthread_attr_t threadattr;
 	Tcl_Interp *interp;
-	Tcl_Obj *obj;
 	int i;
 	char buf[32];
 
