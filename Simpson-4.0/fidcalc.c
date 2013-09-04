@@ -991,7 +991,8 @@ void direct_acqblock_freq(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp 
 			//fftw_execute(p);
 			fftw_execute_dft(sim->fftw_plans[wsp->thread_id],fftin,fftout);
 			for (j=0; j<N; j++) {
-				bin = (int)(1.5-(diff + freqT*(j-N/2+1))/binsize +sim->np/2);
+				//bin = (int)(1.5-(diff + freqT*(j-N/2+1))/binsize +sim->np/2);
+				bin = (int)(1.5+(diff + freqT*(j-N/2+1))/binsize +sim->np/2);
 				//printf("index %d -> freq = %g, bin %d -> ",j,diff+freqT*(j-N/2+1),bin);
 				while (bin < 1) bin += sim->np;
 				while (bin > sim->np) bin -= sim->np;
@@ -2806,7 +2807,8 @@ void collect_spc_interpol_direct(acq_data *acqdata)
     				int idx = (i + acqdata->ncp/2 + 1) % acqdata->ncp;
     				double zzre = fftout1[idx][0];
     				double zzim = fftout1[idx][1];
-    				bin = (int)(1.5-(diff + (2.0e6*M_PI/acqdata->taur)*(i-acqdata->ncp/2+1))/binsize + acqdata->Np/2);
+    				//bin = (int)(1.5-(diff + (2.0e6*M_PI/acqdata->taur)*(i-acqdata->ncp/2+1))/binsize + acqdata->Np/2);
+    				bin = (int)(1.5+(diff + (2.0e6*M_PI/acqdata->taur)*(i-acqdata->ncp/2+1))/binsize + acqdata->Np/2);
     				while (bin < 1) bin += acqdata->Np;
     				while (bin > acqdata->Np) bin -= acqdata->Np;
     				assert(bin >= 1 && bin <= acqdata->Np);
@@ -3675,7 +3677,8 @@ void gcompute_spc(Sim_info *sim, Sim_wsp *wsp) {
 					complx zz2 = cm_getelem(&dum,*ic,r); // q_sr(-k)
 					double zzre = (zz1.re*zz1.re+zz1.im*zz1.im + zz1.re*zz2.re-zz1.im*zz2.im)*0.5;
 					double zzim = (zz1.re*zz2.im+zz1.im*zz2.re)*0.5;
-					bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
+					//bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
+					bin = (int)(1.5+(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
 					//printf("i = %d, idx = %d, -i = %d, idx = %d : freq = %g, bin %d -> ",i,idx,(Ng-i)%Ng,( ((Ng-i)%Ng) + Ng/2+1 )%Ng,diff+sim->wr*(i-Ng/2+1),bin);
 					while (bin < 1) bin += sim->np;
 					while (bin > sim->np) bin -= sim->np;
@@ -3733,7 +3736,8 @@ void gcompute_spc(Sim_info *sim, Sim_wsp *wsp) {
 					int idx = (i + Ng/2 + 1) % Ng;
 					double zzre = fftout1[idx][0]*fftout2[idx][0] + fftout1[idx][1]*fftout2[idx][1];
 					double zzim = fftout1[idx][0]*fftout2[idx][1] - fftout1[idx][1]*fftout2[idx][0];
-					bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
+					//bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
+					bin = (int)(1.5+(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
 					//printf("i = %d, idx = %d : freq = %g, bin %d -> ",i,idx,diff+sim->wr*(i-Ng/2+1),bin);
 					while (bin < 1) bin += sim->np;
 					while (bin > sim->np) bin -= sim->np;
@@ -4233,7 +4237,8 @@ void collect_spc_interpol_all(int icr, Sim_info *sim, complx *fid, int thrd_id)
 				//if (dataidx2 >=0) fftw_execute(p2);
 				if (dataidx2 >=0) fftw_execute_dft(sim->fftw_plans[thrd_id],fftin2,fftout2);
 				for (i=0; i<Ng; i++) {
-					bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
+					//bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
+					bin = (int)(1.5+(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
 					while (bin < 1) bin += sim->np;
 					while (bin > sim->np) bin -= sim->np;
 					assert(bin >= 1 && bin <= sim->np);
@@ -4285,7 +4290,8 @@ void collect_spc_interpol_all(int icr, Sim_info *sim, complx *fid, int thrd_id)
 					int idx = (i + Ng/2 + 1) % Ng;
 					double zzre = fftout1[idx][0]*fftout2[idx][0] + fftout1[idx][1]*fftout2[idx][1];
 					double zzim = fftout1[idx][0]*fftout2[idx][1] - fftout1[idx][1]*fftout2[idx][0];
-					bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
+					//bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
+					bin = (int)(1.5+(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
 					while (bin < 1) bin += sim->np;
 					while (bin > sim->np) bin -= sim->np;
 					assert(bin >= 1 && bin <= sim->np);
@@ -4480,7 +4486,8 @@ void collect_spc_interpol_lam(int icr, Sim_info *sim, complx *fid, int thrd_id)
 				//if (dataidx2 >=0) fftw_execute(p2);
 				if (dataidx2 >=0) fftw_execute_dft(sim->fftw_plans[thrd_id],fftin2,fftout2);
 				for (i=0; i<Ng; i++) {
-					bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
+					//bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
+					bin = (int)(1.5+(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
 					while (bin < 1) bin += sim->np;
 					while (bin > sim->np) bin -= sim->np;
 					assert(bin >= 1 && bin <= sim->np);
@@ -4527,7 +4534,8 @@ void collect_spc_interpol_lam(int icr, Sim_info *sim, complx *fid, int thrd_id)
 					int idx = (i + Ng/2 + 1) % Ng;
 					double zzre = fftout1[idx][0]*fftout2[idx][0] + fftout1[idx][1]*fftout2[idx][1];
 					double zzim = fftout1[idx][0]*fftout2[idx][1] - fftout1[idx][1]*fftout2[idx][0];
-					bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
+					//bin = (int)(1.5-(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
+					bin = (int)(1.5+(diff + sim->wr*(i-Ng/2+1))/binsize + sim->np/2);
 					while (bin < 1) bin += sim->np;
 					while (bin > sim->np) bin -= sim->np;
 					assert(bin >= 1 && bin <= sim->np);
