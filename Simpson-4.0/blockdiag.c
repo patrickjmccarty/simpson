@@ -4186,6 +4186,7 @@ blk_mat_complx * blk_cm_diag_sort(blk_mat_complx *Ud)
 		} else {
 			switch (bm->type) {
 			case MAT_DENSE:
+				//cm_print(bm,"Propagator before");
 				create_sqmat_complx(tm,NN,MAT_DENSE,0,Ud->basis);
 				//zgeev_("N","V",&NN,bm->data,&NN,dmpos,NULL,&ione,tm->data,&NN,wsp,&lwsp,rwork,&info);
 				zgeev_("N","V",&NN,bm->data,&NN,eigs,NULL,&ione,eigvecs,&NN,wsp,&lwsp,rwork,&info);
@@ -4193,11 +4194,20 @@ blk_mat_complx * blk_cm_diag_sort(blk_mat_complx *Ud)
 					fprintf(stderr,"blk_cm_diag error: diagonalization failed for submatrix %d with the code '%d'\n", i, info);
 				    exit(1);
 				}
+				//for (j=0; j<NN; j++) printf(" (%g %g)",eigs[j].re,eigs[j].im);
+				//printf("\n---\n");
 				eigsort(eigs,rwork,NN,map);
+				// print the maping
+				//printf("\nmap:");
+				//for (j=0; j<NN; j++) printf(" %d",map[j]);
+				//printf("\n");
 				for (j=0; j<NN; j++) {
 					dmpos[j] = eigs[map[j]];
 					memcpy(tm->data+j*NN,eigvecs+map[j]*NN,NN*sizeof(complx));
 				}
+				//for (j=0; j<NN; j++) printf(" (%g %g)",dmpos[j].re,dmpos[j].im);
+				//printf("\n+++++\n");
+				//cm_print(tm,"Trasf. matrix");
 				break;
 			case MAT_DENSE_DIAG:
 				create_sqmat_complx(tm,NN,MAT_DENSE_DIAG,0,Ud->basis);

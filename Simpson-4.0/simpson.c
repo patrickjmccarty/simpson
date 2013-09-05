@@ -659,10 +659,18 @@ void thread_work_interpol_calcfid(int thread_id)
 			//collect_fid_interpol_direct(icr, sim, fid);
 			break;
 		case M_DIRECT_FREQ:
-			//collect_spc_interpol_direct(icr, sim, fid);
+			if (sim->interpolation == INTERPOL_FWT_ALL) {
+				collect_spc_direct_interpol_all(icr, sim, fid,thread_id);
+			} else {
+				collect_spc_direct_interpol_lam(icr, sim, fid,thread_id);
+			}
 			break;
 		}
 		i++;
+		if (verbose & VERBOSE_PROGRESS) {
+			printf("Worker %i/%i: [cryst %d/%d] \n",thread_id+1,glob_info.mpi_rank+1,icr,ncr);
+			fflush(stdout);
+		}
 	}
 }
 
@@ -789,7 +797,8 @@ void thread_work_ASG_interpol(int thread_id)
 				int k0 = k+unfold[0]; while (k0 < 0) k0 += npts; while (k0 >= npts) k0 -= npts;
 				int k1 = k+unfold[1]; while (k1 < 0) k1 += npts; while (k1 >= npts) k1 -= npts;
 				int k2 = k+unfold[2]; while (k2 < 0) k2 += npts; while (k2 >= npts) k2 -= npts;
-				dum = sim->wr*(k-npts/2+1);
+				//dum = sim->wr*(k-npts/2+1);
+				dum = freqT*(k-npts/2+1);
 				zw.re = w[0]*sim->ASG_ampl[k0+npts*j+(tri.a-1)*npts*nnz].re;
 				zw.re += w[1]*sim->ASG_ampl[k1+npts*j+(tri.b-1)*npts*nnz].re;
 				zw.re += w[2]*sim->ASG_ampl[k2+npts*j+(tri.c-1)*npts*nnz].re;
@@ -812,7 +821,8 @@ void thread_work_ASG_interpol(int thread_id)
 					while (bin < 1) bin += sim->np;
 					while (bin > sim->np) bin -= sim->np;
 					//printf("uphill first contrib bin %d (%g, %g)\n",bin,area.re,area.im);
-					bin = sim->np - bin + 1;
+					//bin = sim->np - bin + 1;
+					bin = sim->conjugate_fid ? (sim->np-bin+1) : (bin);
 					fid[bin].re += area.re - prev.re;
 					fid[bin].im += area.im - prev.im;
 					ia++;
@@ -823,7 +833,8 @@ void thread_work_ASG_interpol(int thread_id)
 				while (bin < 1) bin += sim->np;
 				while (bin > sim->np) bin -= sim->np;
 				//printf("uphill last contrib bin %d \n",bin);
-				bin = sim->np - bin + 1;
+				//bin = sim->np - bin + 1;
+				bin = sim->conjugate_fid ? (sim->np-bin+1) : (bin);
 				fid[bin].re += height.re*(fb-fa)/2.0 - prev.re;
 				fid[bin].im += height.im*(fb-fa)/2.0 - prev.im;
 				// downhill but from the other side, so it is also uphill...
@@ -835,7 +846,8 @@ void thread_work_ASG_interpol(int thread_id)
 					while (bin < 1) bin += sim->np;
 					while (bin > sim->np) bin -= sim->np;
 					//printf("downhill first contrib bin %d (%g, %g)\n",bin,area.re,area.im);
-					bin = sim->np - bin + 1;
+					//bin = sim->np - bin + 1;
+					bin = sim->conjugate_fid ? (sim->np-bin+1) : (bin);
 					fid[bin].re += area.re - prev.re;
 					fid[bin].im += area.im - prev.im;
 					ic--;
@@ -846,7 +858,8 @@ void thread_work_ASG_interpol(int thread_id)
 				while (bin < 1) bin += sim->np;
 				while (bin > sim->np) bin -= sim->np;
 				//printf("downhill last contrib bin %d \n",bin);
-				bin = sim->np - bin + 1;
+				//bin = sim->np - bin + 1;
+				bin = sim->conjugate_fid ? (sim->np-bin+1) : (bin);
 				fid[bin].re += height.re*(fc-fb)/2.0 - prev.re;
 				fid[bin].im += height.im*(fc-fb)/2.0 - prev.im;
 			}

@@ -1393,6 +1393,7 @@ int sim_calcfid_interpol(Sim_info *sim, Sim_wsp *wsp)
 	  }
 	  wsp->dt_gcompute = 1e99;
 	  fprintf(stderr,"\n\n...NOTHING DONE HERE!!!...\n\n");
+	  exit(1);
       break;
   case M_DIRECT_FREQ:
 	  wsp->dt_gcompute = 1e99;
