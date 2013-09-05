@@ -192,4 +192,11 @@ void read_sim_pointers(Tcl_Interp* interp, Sim_info **sim, Sim_wsp **wsp);
 #define    EM_ACQBLOCK  201
 #define    EM_MEASURE   301
 
+#define    INTERPOL_NOT_USED    0
+#define    INTERPOL_FWT_ALL     1
+#define    INTERPOL_FWT_LAM     2
+#define    INTERPOL_ASG         3
+#define    INTERPOL_FWTASG_ALL  4
+#define    INTERPOL_FWTASG_LAM  5
+
 #endif /* __SIM_H */

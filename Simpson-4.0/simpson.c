@@ -488,7 +488,7 @@ void master_FWTinterpolate(Sim_info *sim)
 	//printf("lams\n");
 	//for (i=0; i<ntcr*sim->matdim; i++) printf("(%d) %g, %g\n",i,sim->FWT_lam[i].re,sim->FWT_lam[i].im);
 
-	if (sim->interpolation == 1 || sim->interpolation == 4) { // interpolate also amplitudes data
+	if (sim->interpolation == INTERPOL_FWT_ALL || sim->interpolation == INTERPOL_FWTASG_ALL) { // interpolate also amplitudes data
 		int Ndata = ((sim->EDsymmetry == 1) ? 1 : 2)*sim->FWTASG_nnz*sim->points_per_cycle;
 		//printf("%d, %d, %d -> %d\n",sim->EDsymmetry,sim->FWTASG_nnz,sim->points_per_cycle,Ndata);
 		complx *new_frs = (complx *)malloc(Ndata*ntcr*sizeof(complx));
@@ -546,9 +546,9 @@ void mpi_work_ASGread(Sim_info *sim)
 	//FILE *fh;
 	//long fpos, flen;
 
-	assert(sim->interpolation == 3 || sim->interpolation == 4 || sim->interpolation == 5);
+	assert(sim->interpolation == INTERPOL_ASG || sim->interpolation == INTERPOL_FWTASG_ALL || sim->interpolation == INTERPOL_FWTASG_LAM);
 
-	if (sim->interpolation == 3) {
+	if (sim->interpolation == INTERPOL_ASG) {
 		sim->tridata = read_triangle_file(sim->crystfile);
 	} else {
 		sim->tridata = read_triangle_file(sim->targetcrystfile);
@@ -632,7 +632,7 @@ void thread_work_interpol_calcfid(int thread_id)
 	int ncr = LEN(sim->targetcrdata);
 	complx *fid = thrd.fids[thread_id];
 
-	assert(sim->interpolation == 1 || sim->interpolation == 2);
+	assert(sim->interpolation == INTERPOL_FWT_ALL || sim->interpolation == INTERPOL_FWT_LAM);
 
 	cv_zero(fid);
 	i=0;
@@ -642,14 +642,14 @@ void thread_work_interpol_calcfid(int thread_id)
 		if (icr > ncr) break;
 		switch (sim->imethod) {
 		case M_GCOMPUTE_TIME:
-			if (sim->interpolation == 1) {
+			if (sim->interpolation == INTERPOL_FWT_ALL) {
 				collect_fid_interpol_all(icr, sim, fid);
 			} else {
 				collect_fid_interpol_lam(icr, sim, fid);
 			}
 			break;
 		case M_GCOMPUTE_FREQ:
-			if (sim->interpolation == 1) {
+			if (sim->interpolation == INTERPOL_FWT_ALL) {
 				collect_spc_interpol_all(icr, sim, fid,thread_id);
 			} else {
 				collect_spc_interpol_lam(icr, sim, fid,thread_id);
@@ -672,7 +672,7 @@ void thread_work_FWTtoASG(int thread_id)
 	Sim_info *sim = thrd.sim;
 	int ncr = LEN(sim->targetcrdata);
 
-	assert(sim->interpolation == 4 || sim->interpolation == 5);
+	assert(sim->interpolation == INTERPOL_FWTASG_ALL || sim->interpolation == INTERPOL_FWTASG_LAM);
 
 	i=0;
 	while (1) {
@@ -733,12 +733,12 @@ void thread_work_ASG_interpol(int thread_id)
 	int i, j, k, Ntri, itr, nnz, npts, unfold[3];
 	int ia, ib, ic, bin;
 	complx *fid, zw, area, prev, height;
-	double frq[3], w[3], dum, wbin, fa, fb, fc;
+	double frq[3], w[3], dum, wbin, fa, fb, fc, freqT;
 	TRIANGLE tri;
 	Sim_info *sim = thrd.sim;
 	Cryst *crdata = NULL;
 
-	if (sim->interpolation == 3) { //pure ASG
+	if (sim->interpolation == INTERPOL_ASG) { //pure ASG
 		crdata = sim->crdata;
 	} else { // FWTASG interpolations
 		crdata = sim->targetcrdata;
@@ -748,10 +748,12 @@ void thread_work_ASG_interpol(int thread_id)
 	nnz = sim->FWTASG_nnz;
 	if (sim->imethod == M_DIRECT_FREQ) {
 		npts = sim->points_per_cycle;
-		fprintf(stderr,"Error: ASG thread work - imethod M_DIRECT_FREQ not correctly implemented\n");
-		exit(1);
+		freqT = 2.0*M_PI*1e6/sim->ASG_period;
+		//fprintf(stderr,"Error: ASG thread work - imethod M_DIRECT_FREQ not correctly implemented\n");
+		//exit(1);
 	} else if (sim->imethod == M_GCOMPUTE_FREQ) {
 		npts = sim->ngamma;
+		freqT = sim->wr;
 	} else {
 		fprintf(stderr,"Error: ASG thread work - wrong imethod\n");
 		exit(1);
@@ -771,10 +773,14 @@ void thread_work_ASG_interpol(int thread_id)
 			frq[2] = sim->ASG_freq[j+nnz*(tri.c - 1)];
 			// resolve possible fold of frequencies
 			unfold[0] = unfold[1] = unfold[2] = 0;
-			unfold[1] = myround( (frq[0]-frq[1])/sim->wr );
-			unfold[2] = myround( (frq[0]-frq[2])/sim->wr );
-			frq[1] += unfold[1]*sim->wr;
-			frq[2] += unfold[2]*sim->wr;
+			//unfold[1] = myround( (frq[0]-frq[1])/sim->wr );
+			//unfold[2] = myround( (frq[0]-frq[2])/sim->wr );
+			unfold[1] = myround( (frq[0]-frq[1])/freqT );
+			unfold[2] = myround( (frq[0]-frq[2])/freqT );
+			//frq[1] += unfold[1]*sim->wr;
+			//frq[2] += unfold[2]*sim->wr;
+			frq[1] += unfold[1]*freqT;
+			frq[2] += unfold[2]*freqT;
 			sort_triangle_data(frq,&tri,unfold);
 			w[0] = crdata[tri.a].weight;
 			w[1] = crdata[tri.b].weight;
@@ -846,6 +852,10 @@ void thread_work_ASG_interpol(int thread_id)
 			}
 		}
 		i++;
+		if (verbose & VERBOSE_PROGRESS) {
+			printf("Worker %i/%i: [triangle %d/%d] \n",thread_id+1,glob_info.mpi_rank+1,i,Ntri);
+			fflush(stdout);
+		}
 	}
 
 }
@@ -988,7 +998,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 	for (i=0; i<num_threads; i++) thrd.fids[i] = complx_vector(sim->ntot);
 
 	switch (sim->interpolation) {
-	case 0: // no interpolation
+	case INTERPOL_NOT_USED: // no interpolation
 		/* prepare input data for threads */
 		thrd.Ntot = Ntot;
 		thrd.ncr = ncr;
@@ -1016,8 +1026,8 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 			//free_complx_vector(thrd.fids[i]);
 		}
 		break;
-	case 1:
-	case 2: { // FWTinterpolation
+	case INTERPOL_FWT_ALL:
+	case INTERPOL_FWT_LAM: { // FWTinterpolation
 		int iz, iave, irf;
 		double weight;
 		fidsum = complx_vector(sim->ntot);
@@ -1083,7 +1093,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 		}
 		//nfsft_forget(); // free NFFT pre-calculated globals
 		break; }
-	case 3: { // ASGinterpolation
+	case INTERPOL_ASG : { // ASGinterpolation
 		int iz, iave, irf;
 		double weight;
 		fidsum = complx_vector(sim->ntot);
@@ -1144,8 +1154,8 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 			}
 		}
 		break; }
-	case 4:
-	case 5: {// FWTASGinterpolation
+	case INTERPOL_FWTASG_ALL:
+	case INTERPOL_FWTASG_LAM: {// FWTASGinterpolation
 		int iz, iave, irf;
 		double weight;
 		fidsum = complx_vector(sim->ntot);

@@ -2406,7 +2406,13 @@ int tclAcqBlock(ClientData data,Tcl_Interp* interp,int objc, Tcl_Obj *objv[])
 		}
 		break;
 	case M_DIRECT_FREQ:
-		direct_acqblock_freq(interp,objv[objc-1],sim,wsp);
+		if (sim->interpolation == INTERPOL_NOT_USED) {
+			direct_acqblock_freq(interp,objv[objc-1],sim,wsp);
+		} else if (sim->interpolation == INTERPOL_ASG) {
+			direct_acqblock_ASGdata(interp,objv[objc-1],sim,wsp);
+		} else { // any variant of FWT
+			direct_acqblock_FWTdata(interp,objv[objc-1],sim,wsp);
+		}
 		break;
 	case M_GCOMPUTE_TIME:
 	case M_GCOMPUTE_FREQ:

@@ -976,6 +976,7 @@ void direct_acqblock_freq(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp 
 			//printf("zz = rho(%d,%d) = %g, %g\n",c,r,zz.re, zz.im);
 			//diff = freq[c-1] - freq[r-1];
 			diff = freq[r-1] - freq[c-1];
+			//printf("freq = %g\n",diff);
 			complx ph = Cexpi(-diff*period*1.0e-6/N);
 			complx phmul = Complx(1.0,0.0);
 			for (j=0; j<N; j++) {
@@ -1002,6 +1003,7 @@ void direct_acqblock_freq(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp 
 				wsp->fid[bin].re += fftout[idx][0]*cosph - fftout[idx][1]*sinph;
 				wsp->fid[bin].im += fftout[idx][1]*cosph + fftout[idx][0]*sinph;
 				//printf(" sums to %g, %g\n",wsp->fid[bin].re,wsp->fid[bin].im);
+				//printf("\t elem %d: (%g %g)\n",j,fftout[idx][0],fftout[idx][1]);
 			}
 			ic++;
 		}
@@ -4695,3 +4697,232 @@ void convert_FWTtoASG_gcompute(Sim_info *sim, int icr, int thrd_id)
     fftw_free(fftin1);
 
 }
+
+double direct_props(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp *wsp)
+{
+	double period, t0;
+	int i, k, m;
+	blk_mat_complx *T, *Ud;
+
+	// take care of pending propagator and initial density matrix
+	_evolve_with_prop(sim,wsp);
+	_reset_prop(sim,wsp);
+
+	// measure hamiltonian period - should be all included inside acq_block {}
+	wsp->evalmode = EM_MEASURE;
+	t0 = wsp->t;
+	if (Tcl_EvalObjEx(interp,obj,0) != TCL_OK) {
+		fprintf(stderr,"acq_block error: Measure time - can not execute block:\n'%s'\n\n",Tcl_GetString(obj));
+		fprintf(stderr,"Error: %s\n",Tcl_GetStringResult(interp));
+		exit(1);
+	}
+	period = wsp->t - t0;
+	// check synchronization with rotation
+	k = m = 1;
+	if (sim->taur > 0) {
+		modnumbers(period,sim->taur,&k,&m);
+		if (verbose & VERBOSE_ACQBLOCK) {
+			printf("acq_block synchronization info: %d * acq_block(%g us) = %d * rotor period(%g us)\n",k,period,m,sim->taur);
+		}
+		period *= k;
+	}
+	wsp->t = t0; // reset time counter
+	// adjust dwelltime
+	wsp->dw = period/sim->points_per_cycle;
+	//printf("period = %g, freqT = %g, N = %d, dw = %g\n",period,freqT,sim->points_per_cycle,wsp->dw);
+
+	// initialize propagator counters
+	wsp->acqblock_sto = ACQBLOCK_STO_INI;  // points to free position
+	wsp->acqblock_t0 = t0 = wsp->t;
+	wsp->evalmode = EM_ACQBLOCK;
+
+	// evaluate acq_block to get its propagator(s)
+	for (i=0; i<k; i++) {
+		if (Tcl_EvalObjEx(interp,obj,0) != TCL_OK) {
+			fprintf(stderr,"acq_block error: (1) run %d, can not execute block:\n'%s'\n\n",i+1,Tcl_GetString(obj));
+			fprintf(stderr,"Error: %s\n",Tcl_GetStringResult(interp));
+			exit(1);
+		}
+	}
+	t0 = wsp->t - t0;
+	if (fabs(t0-period) > TINY) {
+		fprintf(stderr,"Error: acq_block : mismatch in durations, measured %g <> executed %g\n",period,t0);
+		exit(1);
+	}
+	// we should be done now with propagators
+	k = ACQBLOCK_STO_INI;       // first propagator
+	m = wsp->acqblock_sto - 1;  // final propagator
+	DEBUGPRINT("direct_acqblock: propagators from %d to %d\n",k,m);
+	if ( wsp->acqblock_sto - ACQBLOCK_STO_INI != sim->points_per_cycle) {
+		fprintf(stderr,"Error: direct_acqblock - freq - propagator count mismatch\n");
+		exit(1);
+	}
+
+	// make all propagators to be in the same basis as the final one
+	Ud = wsp->STO[m];
+	for (i=k; i<m; i++) {
+		if (wsp->STO[i]->basis == Ud->basis) continue;
+		T = create_blk_mat_complx_copy(Ud);
+		blk_cm_change_basis(T,wsp->STO[i],sim);
+		free_blk_mat_complx(wsp->STO[i]);
+		wsp->STO[i] = T;
+	}
+	//blk_cm_print(T,"U total i basis 0");
+	//exit(1);
+	return period;
+}
+
+mat_complx *direct_transforms(Sim_info *sim, Sim_wsp *wsp)
+{
+	int i, k, m;
+	mat_complx *det, *rho;
+	blk_mat_complx *Ud, *T, *TT;
+
+	// prepare detection operator
+	if (sim->acq_adjoint) {
+		if (wsp->fdetect != sim->fdetect)
+			cm_adjointi(wsp->fdetect);
+		else
+			wsp->fdetect = cm_adjoint(sim->fdetect);
+	}
+
+	k = ACQBLOCK_STO_INI;       // first propagator
+	m = wsp->acqblock_sto - 1;  // final propagator
+	// prepare transformed matrices
+	Ud = wsp->STO[m];
+	det = wsp->matrix[k] = cm_change_basis_2(wsp->fdetect,Ud->basis,sim);
+	rho = cm_change_basis_2(wsp->sigma,Ud->basis,sim);
+	if (blk_cm_isdiag(Ud)) {
+		T = NULL;
+		for (i=k; i<m; i++) {
+			wsp->matrix[i+1] = cm_dup(det);
+			blk_simtrans_adj(wsp->matrix[i+1],wsp->STO[i],sim);
+			free_blk_mat_complx(wsp->STO[i]);
+			wsp->STO[i] = NULL;
+		}
+	} else {
+		DEBUGPRINT("\t\t need to diagonalize prop\n");
+		//blk_cm_print(Ud,"will diagonalize this");
+		if (sim->interpolation == INTERPOL_NOT_USED) {
+			T = blk_cm_diag(Ud);
+		} else {
+			T = blk_cm_diag_sort(Ud);
+		}
+		for (i=k; i<m; i++) {
+			TT = blk_cm_mul(wsp->STO[i],T);
+			free_blk_mat_complx(wsp->STO[i]);
+			wsp->STO[i] = NULL;
+			wsp->matrix[i+1] = cm_dup(det);
+			blk_simtrans_adj(wsp->matrix[i+1],TT,sim);
+			free_blk_mat_complx(TT);
+		}
+		blk_simtrans_adj(rho,T,sim);
+		blk_simtrans_adj(det,T,sim);
+		free_blk_mat_complx(T);
+	}
+
+	// control print out
+	//cm_print(rho,"rho");
+	//for (i=k; i<=m; i++) cm_print(wsp->matrix[i],"dets");
+
+	return rho;
+}
+
+/******
+ * this is for simulation in frequency domain to prepare for ASG interpolation
+ ****/
+void direct_acqblock_ASGdata(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp *wsp)
+{
+	int i, j, k, m, matdim, N, *irow, *icol, *ic, nnz, r, c;
+	double period, *freq, diff;
+	complx z, zz;
+	mat_complx *rho;
+	blk_mat_complx *Ud;
+
+	period = direct_props(interp, obj, sim, wsp);
+	rho = direct_transforms(sim, wsp);
+
+	k = ACQBLOCK_STO_INI;       // first propagator
+	m = wsp->acqblock_sto - 1;  // final propagator
+	Ud = wsp->STO[m];
+	matdim = Ud->dim;
+	freq = freq_from_Ud(Ud,period);
+	N = sim->points_per_cycle;
+
+	// allocate global sim vectors in initial run (of master thread)
+	if (sim->ASG_freq == NULL) {
+	    irow = sim->FWTASG_irow = (int*)malloc((matdim+1)*sizeof(int));
+	    icol = sim->FWTASG_icol = (int*)malloc(matdim*matdim*sizeof(int)); // just large enough
+	    if ( !irow || !icol ) {
+	    	fprintf(stderr,"Error: direct freq ASG initial run - no more memory for irow, icol");
+	    	exit(1);
+	    }
+	    scan_contrib_direct(rho,&wsp->matrix[k],N,irow,icol);
+	    nnz = sim->FWTASG_nnz = irow[matdim] - 1;
+	    sim->ASG_freq = (double*)malloc(LEN(sim->crdata)*nnz*sizeof(double));
+		sim->ASG_ampl = (complx*)malloc(LEN(sim->crdata)*nnz*N*sizeof(complx));
+	    if ( sim->ASG_freq == NULL || sim->ASG_ampl == NULL ) {
+	    	fprintf(stderr,"Error: direct freq ASG initial run - no more memory for ASG data");
+	    	exit(1);
+	    }
+		sim->ASG_period = period;
+	} else {
+		irow = sim->FWTASG_irow;
+		icol = sim->FWTASG_icol;
+		assert(irow != NULL && icol != NULL);
+		nnz = sim->FWTASG_nnz;
+	}
+
+	// construct the spectrum
+    fftw_complex *fftin = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
+    fftw_complex *fftout = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
+
+    m = 0;
+	ic = icol;
+	for (r=1; r<=matdim; r++) {
+		int nc = irow[r] - irow[r-1];
+		for (i=0; i<nc; i++) {
+			c = *ic;
+			zz = cm_getelem(rho,c,r);
+			diff = sim->ASG_freq[(wsp->cryst_idx-1)*nnz + m] = freq[r-1] - freq[c-1];
+			//printf("elem %d: freq = %g\n",m,diff);
+			complx ph = Cexpi(-diff*period*1.0e-6/N);
+			complx phmul = Complx(1.0,0.0);
+			for (j=0; j<N; j++) {
+				z = Cmul(phmul,cm_getelem(wsp->matrix[k+j],r,c));
+				fftin[j][0] = zz.re*z.re - zz.im*z.im;
+				fftin[j][1] = zz.im*z.re + zz.re*z.im;
+				phmul = Cmul(phmul,ph);
+			}
+			fftw_execute_dft(sim->fftw_plans[wsp->thread_id],fftin,fftout);
+			for (j=0; j<N; j++) {
+				int idx = (j+N/2+1)%N;
+				complx *zz1 = &sim->ASG_ampl[(wsp->cryst_idx-1)*nnz*N+m*N+j];
+				zz1->re = fftout[idx][0];
+				zz1->im = fftout[idx][1];
+				//printf("elem %d: ampl %d: (%g %g)\n",m,j,zz1->re,zz1->im);
+			}
+			ic++;
+			m++;
+		}
+	}
+
+    fftw_free(fftin); fftw_free(fftout);
+	free_complx_matrix(rho);
+	for (i=k; i<=m; i++) {
+		free_complx_matrix(wsp->matrix[i]);
+		wsp->matrix[i] = NULL;
+	}
+}
+
+/******
+ * this is for simulation in frequency domain to prepare for FWT interpolation
+ ****/
+void direct_acqblock_FWTdata(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp *wsp)
+{
+
+   fprintf(stderr,"Error: in direct_acqblock_FWTdata - not implemented further\n");
+   exit(1);
+}
+
+
