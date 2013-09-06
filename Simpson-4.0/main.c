@@ -120,6 +120,11 @@ int main (int argc,char *argv[])
 	   for (i=1; i<argc; i++) {
 		   Tcl_SetVar(interp,"argv",argv[i],TCL_GLOBAL_ONLY|TCL_LIST_ELEMENT|TCL_APPEND_VALUE);
 	   }
+       if (NULL == Tcl_SetVar(interp,"simpson_version",VERSION,
+                              TCL_GLOBAL_ONLY | TCL_LEAVE_ERR_MSG)) {
+           fprintf(stderr,"error: %s\n",interp->result);
+           return TCL_ERROR;
+       }
 	   /* evaluate input file */
 	   DEBUGPRINT("Main: evaluating input file '%s'\n\n",argv[1]);
 	   if (Tcl_EvalFile(interp, argv[1]) != TCL_OK) {
