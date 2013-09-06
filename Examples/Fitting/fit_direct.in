@@ -1,0 +1,151 @@
+# Example demonstrating the capability of including a Tcl library into SIMPSON, in
+# this case a library containing simplex fitting routines and routines for 95 %
+# confidence interval calculations.
+#
+# The example uses the spectrum "15bc.spe" as the experimental spectrum modelled by
+# an FSLG decoupling simulation of an oriented sample with mosaic spread. This 
+# spectrum and was the analysis were published in
+#
+# Vosegaard et al. J. Am. Chem. Soc. 130 (2008) 5028-5029.
+#
+# The present implementation uses the acq_block {} for simple programming of the 
+# FSLG decoupling. Crystal files are generated on the fly, since we need to have
+# the degree of mosaic spread as a variable in the optimization.
+
+lappend ::auto_path ./opt-1.0
+package require opt 1.0
+
+spinsys {
+  channels 15N 1H
+  nuclei 15N 1H
+  shift 1 8954.4 1.0 0 0 0 0
+  dipole 1 2 9940 0 0 0
+}
+
+par {
+  proton_frequency 700.13e6
+  start_operator   I1x
+  detect_operator  I1p
+  method           direct
+  sw               1
+  gamma_angles     1
+  np               1
+  spin_rate        0
+  crystal_file     ./bcr
+}
+
+proc progress {i} {
+	set prog {"-" "\\" "|" "/"}
+	if {$i == "final"} {return "FINAL"}
+	return " \[[lindex $prog [expr $i % 4]]\] "
+}
+
+proc bcr {dist} {
+  set n [expr int($dist*5)]
+  set a [expr $dist*$dist/log(2)]
+  set fp [open bcr.cry w]
+  set wtot 0
+  puts $fp $n
+  set dca [expr 1-cos(3.5*3.1415927/180.0*$dist)]
+  for {set i 0} {$i < $n} {incr i} {
+    set ca [expr 1-$i/double($n)*$dca]
+    set ang($i) [expr acos($ca)*180/3.1415927]
+    set w($i) [expr exp(-$ang($i)*$ang($i)/$a)]
+    set wtot [expr $wtot + $w($i)]
+  }
+
+  for {set i 0} {$i < $n} {incr i} {
+    puts $fp "0 $ang($i) [expr $w($i)/$wtot]"
+  }
+  close $fp
+}
+
+proc pulseq {} {
+  global par
+
+	acq_block {
+	  offset 0 $par(offH)
+	  pulse $par(tsw2) 0 x $par(rfH) x
+	  offset 0 [expr -$par(offH)]
+	  pulse $par(tsw2) 0 x $par(rfH) -x
+	  offset 0 0
+	}
+}
+
+proc rms {{save 0}} {
+	global par
+	
+	incr par(i)
+	bcr $opt::bdist
+	set f [fsimpson [list \
+	  [list shift_1_iso [expr $par(iso)-$par(ref)]] \
+	  [list shift_1_aniso $opt::csa] \
+	  [list dipole_1_2_aniso $opt::dip] \
+	]]
+	faddlb $f $opt::lb 1
+	fft $f
+
+	fset $f -ref $par(ref)
+	fautoscale $f $par(f) -re
+	set rms [frms $f $par(f) -re]
+	if {$save != 0} {
+		fsave $f $save -binary
+		set par(i) "final"
+	}
+	puts -nonewline stdout [format "[progress $par(i)]%10.3f %10.3f %10.3f %8.3f %10.3f\015" \
+	  $opt::csa $opt::dip $opt::lb $opt::bdist $rms]
+	flush stdout
+	funload $f
+	return $rms
+}
+
+proc c95 {par} {
+	opt::confidence $par
+	set best [set opt::$par]
+	set data [opt::c_data]
+	set res  [opt::c_calculate $data]
+	
+	set fp [open c95_$par w]
+	puts $fp "# $res"
+	puts $fp [join $data \n]
+	close $fp
+	opt::setpar $par $best
+}
+
+proc main {} {
+  global par
+
+  set f [fload 15bc.spe]
+  set par(f) $f
+  set par(i) 0
+  set par(sw)  [fget $f -sw]
+  set par(ref) [fget $f -ref]
+  set par(np)  [fget $f -np]
+  set par(nblock) 1
+  set par(tsw2) [expr 0.5e6/$par(sw)/$par(nblock)]
+  set par(rfH)  [expr 1.0e6/sqrt(1.5)/$par(tsw2)*$par(nblock)]
+  set par(offH) [expr 1.0e6/sqrt(3.0)/$par(tsw2)*$par(nblock)]
+  set par(iso) 8954.4
+
+
+
+#	set par(offH) 0
+
+	opt::newpar csa   6200 50
+	opt::newpar dip   7400 50
+	opt::newpar lb    1000 50 500 2000
+	opt::newpar bdist   17  1  10   25
+	
+	opt::function rms
+	
+	opt::minimize 1e-5
+	rms $par(name).spe
+
+#	c95 csa
+#	c95 dip
+#	c95 lb
+#	c95 bdist
+	
+	puts {}
+}
+#FINAL  6212.183   7422.039   1216.926   16.852     17.841

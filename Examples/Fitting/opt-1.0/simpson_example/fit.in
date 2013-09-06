@@ -1,0 +1,106 @@
+lappend ::auto_path ../
+package require opt
+
+spinsys {
+	channels 87Rb
+	nuclei 87Rb
+	quadrupole 1 2 3.3e6 0.2 0 0 0
+	shift 1 -2000 0 0 0 0 0
+}
+
+par {
+	proton_frequency 400e6
+	start_operator   I1x
+	detect_operator  I1c
+	spin_rate        10000
+	method           gcompute
+	gamma_angles     4
+	sw               gamma_angles*spin_rate
+	crystal_file     zcw4180
+	np               256
+}
+
+proc pulseq {} {
+	delay 1000
+}
+
+proc rms {{save 0}} {
+	global par
+	
+	set iso [expr $opt::iso - $par(ref)]
+	
+	set f [fsimpson [list \
+    [list quadrupole_1_aniso [expr $opt::cq*1.0e6]] \
+    [list quadrupole_1_eta $opt::eta] \
+	  [list shift_1_iso $iso] \
+	]]
+	faddlb $f $opt::lb 0.6
+	fzerofill $f $par(npz)
+	fft $f
+	fset $f -ref $par(ref)
+	fautoscale $f $par(exp) -re
+	set rms [frms $f $par(exp) -re]
+	if {$save != 0} {
+		fsave $f $par(name).spe -binary
+	} else {
+		puts -nonewline [format " %-8s %10.3f %10.3f %10.3f %10.3f %10.3f\015" $par(info) $opt::cq $opt::eta $opt::iso $opt::lb $rms]
+		flush stdout
+	}
+	funload $f
+	return $rms
+}
+
+proc main {} {
+	global par
+	set bold "\033\[91m\033\[1m"
+	set normal "\033\[0m"
+
+	set par(exp) [fload 2.spe]
+	set par(npz) [fget $par(exp) -np]
+	set par(ref) [fget $par(exp) -ref]
+	opt::function rms
+	
+	opt::newpar cq      3.3   0.1
+	opt::newpar eta     0.2   0.05 0 1
+	opt::newpar iso -2000   100
+	opt::newpar lb    250    10
+	
+	set par(crystal_file) rep678
+
+	puts "                 cq        eta      iso         lb          rms"
+	set par(info) "Optimize"
+	opt::minimize 1.0e-6
+	puts {}
+
+	set par(info) "Scan ${bold}CQ${normal} "
+	set err_cq [opt::confidence cq]
+	
+	set par(info) "Scan ${bold}ETA${normal}"
+	set err_eta [opt::confidence eta]
+	if {$err_eta == 0} {
+		set data [opt::c_data]
+		set newdata [lrange $data 0 6]
+		set out [opt::c_calculate $newdata]
+#		puts $out
+		set err_eta [lindex $out 0]
+	}
+#	puts [join [opt::c_data] \n]
+	
+	set par(info) "Scan ${bold}ISO${normal}"
+	set err_iso [opt::confidence iso]
+
+	set par(info) "Scan ${bold}LB${normal} "
+	set err_lb [opt::confidence lb]
+
+	set sfrq [expr [resfreq 87Rb $par(proton_frequency)]/1.0e6]
+	puts "\n\nFinal parameters:"
+	puts [format "${bold}CQ${normal}:   %.2f ± %.2f MHz" $opt::cq [expr $err_cq/2.0]]
+	puts [format "${bold}ETA${normal}:  %.2f ± %.2f" $opt::eta [expr $err_eta/2.0]]
+	puts [format "${bold}ISO${normal}: %.0f ± %.0f Hz" $opt::iso [expr $err_iso/2.0]]
+        puts [format "     %.1f ± %.1f ppm" [expr $opt::iso/$sfrq] [expr $err_iso/$sfrq/2.0]]
+	puts [format "${bold}LB${normal}:    %.0f ± %.0f Hz" $opt::lb [expr $err_lb/2.0]]
+
+	set par(crystal_file) zcw4180
+	rms 1
+	puts "Saved spectrum: $par(name).spe"
+}
