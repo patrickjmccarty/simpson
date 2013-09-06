@@ -128,6 +128,12 @@ proc c95 {par} {
 proc main {} {
   global par
 
+	set v [split $::simpson_version "."]
+	if {[lindex $v 0] < 4} {
+		puts stderr "SIMPSON version >= 4 is required to run this input file"
+		exit
+	}
+
   set f [fload 15bc.spe]
   set par(f) $f
   set par(i) 0
