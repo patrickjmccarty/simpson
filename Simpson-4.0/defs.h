@@ -69,7 +69,7 @@ extern int various;
 
 /* Version number of SIMPSON package */
 #define PACKAGE "SIMPSON"
-#define VERSION "4.0"
+#define VERSION "4.0.0"
 
 
 /* include header file for MPI setup  */
