@@ -5037,6 +5037,7 @@ void collect_spc_direct_interpol_all(int icr, Sim_info *sim, complx *fid, int th
 	complx zz;
 	int Ncr = LEN(sim->targetcrdata);
 	double freqT = 2.0*M_PI*1.0e6/sim->ASG_period;
+	int direction = sim->conjugate_fid ? -1 : +1;
 
 	fftw_complex *fftin = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
     fftw_complex *fftout = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
@@ -5069,7 +5070,7 @@ void collect_spc_direct_interpol_all(int icr, Sim_info *sim, complx *fid, int th
 			fftw_execute_dft(sim->fftw_plans[thrd_id],fftin,fftout);
 			for (j=0; j<N; j++) {
 				//bin = (int)(1.5-(diff + freqT*(j-N/2+1))/binsize +sim->np/2);
-				bin = (int)(1.5+(diff + freqT*(j-N/2+1))/binsize +sim->np/2);
+				bin = (int)(1.5+direction*(diff + freqT*(j-N/2+1))/binsize +sim->np/2);
 				//printf("index %d -> freq = %g, bin %d -> ",j,diff+freqT*(j-N/2+1),bin);
 				while (bin < 1) bin += sim->np;
 				while (bin > sim->np) bin -= sim->np;
@@ -5103,6 +5104,7 @@ void collect_spc_direct_interpol_lam(int icr, Sim_info *sim, complx *fid, int th
 	int ntcr = LEN(sim->targetcrdata);
 	int iscr = sim->crmap[icr-1] - 1;
 	double freqT = 2.0*M_PI*1.0e6/sim->ASG_period;
+	int direction = sim->conjugate_fid ? -1 : +1;
 
 	fftw_complex *fftin = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
     fftw_complex *fftout = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
@@ -5135,7 +5137,7 @@ void collect_spc_direct_interpol_lam(int icr, Sim_info *sim, complx *fid, int th
 			fftw_execute_dft(sim->fftw_plans[thrd_id],fftin,fftout);
 			for (j=0; j<N; j++) {
 				//bin = (int)(1.5-(diff + freqT*(j-N/2+1))/binsize +sim->np/2);
-				bin = (int)(1.5+(diff + freqT*(j-N/2+1))/binsize +sim->np/2);
+				bin = (int)(1.5+direction*(diff + freqT*(j-N/2+1))/binsize +sim->np/2);
 				//printf("index %d -> freq = %g, bin %d -> ",j,diff+freqT*(j-N/2+1),bin);
 				while (bin < 1) bin += sim->np;
 				while (bin > sim->np) bin -= sim->np;
@@ -5154,5 +5156,84 @@ void collect_spc_direct_interpol_lam(int icr, Sim_info *sim, complx *fid, int th
 
     fftw_free(fftin); fftw_free(fftout);
     free(freq);
+
+}
+
+void convert_FWTtoASG_direct(Sim_info *sim, int icr, int thrd_id)
+{
+	double *freq, *dptr, diff;
+	complx *z1, zz;
+	int i, j, r, c, innz, *ic, ncrf=0, icrf=0;
+	int dim = sim->matdim;
+	int ncr = LEN(sim->targetcrdata);
+	int N = sim->points_per_cycle;
+	int nnz = sim->FWTASG_nnz;
+	int *irow = sim->FWTASG_irow;
+	int *icol = sim->FWTASG_icol;
+
+	if (sim->interpolation == INTERPOL_FWTASG_ALL) {
+		ncrf = ncr;
+		icrf = icr;
+	} else { // FWT_frs were not enlarged
+		ncrf = LEN(sim->crdata);
+		icrf = sim->crmap[icr-1];
+	}
+
+	//printf("... icr = %d (%d), ncr = %d(%d)\n",icr,icrf,ncr,ncrf);
+	freq = dptr = (double*)malloc(dim*sizeof(double));
+	if (freq == NULL) {
+		fprintf(stderr,"Error: convert_FWTtoASG_direct - no more memory for freq\n");
+		exit(1);
+	}
+	z1 = &sim->FWT_lam[icr-1];
+	for (i=0; i<dim; i++) {
+		*dptr = -Carg((*z1))/sim->ASG_period*1.0e6;
+		z1 += ncr;
+		dptr++;
+	}
+	// control print-out
+	//printf("... icr = %d ...\n",icr);
+	//for (i=0; i<dim; i++) printf("freq[%d] = %g\n",i,freq[i]);
+
+    fftw_complex *fftin = (fftw_complex*) fftw_malloc(sizeof(fftw_complex)*N*2);
+    fftw_complex *fftout = fftin + N;
+    if (!fftin) {
+    	fprintf(stderr,"Error: convert_FWTtoASG_direct - no more memory for FFTW structures\n");
+    	exit(1);
+    }
+
+	// construct the spectrum
+    innz = 0;
+	ic = icol;
+	for (r=1; r<=dim; r++) {
+		int nc = irow[r] - irow[r-1];
+		for (i=0; i<nc; i++) {
+			c = *ic;
+			diff = sim->ASG_freq[(icr-1)*nnz + innz] = freq[r-1] - freq[c-1];
+			//printf("elem %d (r=%d, c=%d): freq = %g\n",innz,r,c,diff);
+			complx ph = Cexpi(-diff*sim->ASG_period*1.0e-6/N);
+			complx phmul = Complx(1.0,0.0);
+			for (j=0; j<N; j++) {
+				zz = sim->FWT_frs[icrf-1+ncrf*j+innz*ncrf*N];
+				fftin[j][0] = zz.re*phmul.re - zz.im*phmul.im;
+				fftin[j][1] = zz.im*phmul.re + zz.re*phmul.im;
+				phmul = Cmul(phmul,ph);
+			}
+			fftw_execute_dft(sim->fftw_plans[thrd_id],fftin,fftout);
+			for (j=0; j<N; j++) {
+				int idx = (j+N/2+1)%N;
+				complx *zz1 = &sim->ASG_ampl[(icr-1)*nnz*N+innz*N+j];
+				zz1->re = fftout[idx][0];
+				zz1->im = fftout[idx][1];
+				//printf("elem %d: ampl %d: (%g %g)\n",m,j,zz1->re,zz1->im);
+			}
+			ic++;
+			innz++;
+		}
+	}
+
+	// freeing memory
+	free(freq);
+    fftw_free(fftin);
 
 }

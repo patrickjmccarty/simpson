@@ -700,8 +700,7 @@ void thread_work_FWTtoASG(int thread_id)
 			exit(1);
 			break;
 		case M_DIRECT_FREQ:
-			fprintf(stderr,"Error: thread_work_FWTtoASG - FWTASG in direct method not implemented yet\n");
-			exit(1);
+			convert_FWTtoASG_direct(thrd.sim,icr,thread_id);
 			break;
 		}
 		i++;
@@ -1082,12 +1081,13 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 #endif
 					// read data files and interpolate, use ONLY MPI workers
 					// NFFT library does not work properly on windows with threads
+					printf("\nInterpolating... \n");
 					master_FWTinterpolate(sim);
 #ifdef MPI
 					// wait somehow for all MPI slaves to finish, only then continue
 					MPI_Barrier(MPI_COMM_WORLD);
 #endif
-					printf("\ninterpolation done\n");
+					printf(" done.\n");
 					// calculate fid
 					glob_info.cont_thread = 4;
 					pthread_barrier_wait(&simpson_b_start);
@@ -1210,12 +1210,13 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 #endif
 					// read data files and interpolate, use ONLY MPI workers
 					// NFFT library does not work properly on windows with threads
+					printf("\nInterpolating with FWT ");
 					master_FWTinterpolate(sim);
 #ifdef MPI
 					// wait somehow for all MPI slaves to finish, only then continue
 					MPI_Barrier(MPI_COMM_WORLD);
 #endif
-					printf("\nFWT interpolation done\n");
+					printf(" done\n");
 					// prepare data for ASG interpolation
 					if (sim->ASG_freq == NULL) {
 						sim->ASG_freq = (double*)malloc(LEN(sim->targetcrdata)*sim->FWTASG_nnz*sizeof(double));

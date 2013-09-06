@@ -46,6 +46,7 @@ void direct_acqblock_ASGdata(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_w
 void direct_acqblock_FWTdata(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp *wsp);
 void collect_spc_direct_interpol_all(int icr, Sim_info *sim, complx *fid, int thrd_id);
 void collect_spc_direct_interpol_lam(int icr, Sim_info *sim, complx *fid, int thrd_id);
+void convert_FWTtoASG_direct(Sim_info *sim, int icr, int thrd_id);
 
 
 #endif /* FIDCALC_H_ */
