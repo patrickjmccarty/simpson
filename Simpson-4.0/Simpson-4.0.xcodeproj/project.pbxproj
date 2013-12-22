@@ -39,9 +39,7 @@
 		B1ECDCAD17B505D700F68BD3 /* tclutil.c in Sources */ = {isa = PBXBuildFile; fileRef = B1ECDC8B17B505D700F68BD3 /* tclutil.c */; };
 		B1ECDCAE17B505D700F68BD3 /* wigner.c in Sources */ = {isa = PBXBuildFile; fileRef = B1ECDC8E17B505D700F68BD3 /* wigner.c */; };
 		B1ECDCB017B5061B00F68BD3 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B1ECDCAF17B5061B00F68BD3 /* Accelerate.framework */; };
-		B1ECDCB217B5090E00F68BD3 /* libfftw3.3.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = B1ECDCB117B5090E00F68BD3 /* libfftw3.3.dylib */; };
 		B1ECDCB717B50F9C00F68BD3 /* Tcl.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B1ECDCB617B50F9C00F68BD3 /* Tcl.framework */; };
-		B1ECDCBA17B5111900F68BD3 /* libnfft3.1.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = B1ECDCB917B5111900F68BD3 /* libnfft3.1.dylib */; };
 		B1F6C25717D5EB4800D455FF /* pthread_barrier_mac.c in Sources */ = {isa = PBXBuildFile; fileRef = B1F6C25517D5EB4800D455FF /* pthread_barrier_mac.c */; };
 /* End PBXBuildFile section */
 
@@ -58,7 +56,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		B1ECDC4817B504DF00F68BD3 /* Simpson-4.0 */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; name = "Simpson-4.0"; path = simpson; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1ECDC4817B504DF00F68BD3 /* simpson */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = simpson; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1ECDC5417B505D700F68BD3 /* allocation.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = allocation.c; sourceTree = SOURCE_ROOT; };
 		B1ECDC5517B505D700F68BD3 /* arithmetic_ansi.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = arithmetic_ansi.h; sourceTree = SOURCE_ROOT; };
 		B1ECDC5617B505D700F68BD3 /* auxmath.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = auxmath.c; sourceTree = SOURCE_ROOT; };
@@ -120,9 +118,7 @@
 		B1ECDC8E17B505D700F68BD3 /* wigner.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = wigner.c; sourceTree = SOURCE_ROOT; };
 		B1ECDC8F17B505D700F68BD3 /* wigner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = wigner.h; sourceTree = SOURCE_ROOT; };
 		B1ECDCAF17B5061B00F68BD3 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
-		B1ECDCB117B5090E00F68BD3 /* libfftw3.3.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libfftw3.3.dylib; path = /usr/local/lib/libfftw3.3.dylib; sourceTree = "<absolute>"; };
 		B1ECDCB617B50F9C00F68BD3 /* Tcl.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Tcl.framework; path = System/Library/Frameworks/Tcl.framework; sourceTree = SDKROOT; };
-		B1ECDCB917B5111900F68BD3 /* libnfft3.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libnfft3.1.dylib; path = ../../../../usr/local/lib/libnfft3.1.dylib; sourceTree = "<group>"; };
 		B1F6C25517D5EB4800D455FF /* pthread_barrier_mac.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = pthread_barrier_mac.c; sourceTree = SOURCE_ROOT; };
 		B1F6C25617D5EB4800D455FF /* pthread_barrier_mac.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = pthread_barrier_mac.h; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -132,9 +128,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B1ECDCBA17B5111900F68BD3 /* libnfft3.1.dylib in Frameworks */,
 				B1ECDCB717B50F9C00F68BD3 /* Tcl.framework in Frameworks */,
-				B1ECDCB217B5090E00F68BD3 /* libfftw3.3.dylib in Frameworks */,
 				B1ECDCB017B5061B00F68BD3 /* Accelerate.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -145,7 +139,6 @@
 		B1ECDC3F17B504DF00F68BD3 = {
 			isa = PBXGroup;
 			children = (
-				B1ECDCB917B5111900F68BD3 /* libnfft3.1.dylib */,
 				B1ECDCB817B50FD000F68BD3 /* Libs */,
 				B1ECDC4A17B504DF00F68BD3 /* Simpson-4.0 */,
 				B1ECDC4917B504DF00F68BD3 /* Products */,
@@ -155,7 +148,7 @@
 		B1ECDC4917B504DF00F68BD3 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				B1ECDC4817B504DF00F68BD3 /* Simpson-4.0 */,
+				B1ECDC4817B504DF00F68BD3 /* simpson */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -233,7 +226,6 @@
 			isa = PBXGroup;
 			children = (
 				B1ECDCB617B50F9C00F68BD3 /* Tcl.framework */,
-				B1ECDCB117B5090E00F68BD3 /* libfftw3.3.dylib */,
 				B1ECDCAF17B5061B00F68BD3 /* Accelerate.framework */,
 			);
 			name = Libs;
@@ -256,7 +248,7 @@
 			);
 			name = simpson;
 			productName = "Simpson-4.0";
-			productReference = B1ECDC4817B504DF00F68BD3 /* Simpson-4.0 */;
+			productReference = B1ECDC4817B504DF00F68BD3 /* simpson */;
 			productType = "com.apple.product-type.tool";
 		};
 /* End PBXNativeTarget section */
@@ -394,14 +386,28 @@
 		B1ECDC5217B504E000F68BD3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD_32_BIT)";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = (
+					/usr/local/lib/libfftw3.a,
+					/usr/local/lib/libnfft3.a,
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx10.8;
 			};
 			name = Debug;
 		};
 		B1ECDC5317B504E000F68BD3 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD_32_BIT)";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = (
+					/usr/local/lib/libfftw3.a,
+					/usr/local/lib/libnfft3.a,
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx10.8;
 			};
 			name = Release;
 		};
