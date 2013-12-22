@@ -1491,9 +1491,9 @@ int tclFRms(ClientData data,Tcl_Interp* interp,int argc, char *argv[])
       if (i1 < i2) {
          daddrms(vec,vec2,i1,i2,part,&sumrms,&sumint);
       }
-      free(par2);
+      Tcl_Free((char*)par2);
     }
-    free(par);
+    Tcl_Free((char*)par);
   } else {
     daddrms(vec,vec2,1,nvec,part,&sumrms,&sumint);
   }
