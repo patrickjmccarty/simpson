@@ -108,9 +108,9 @@ typedef struct _Sim_info {
   double **rfdata;
   int Jinterpol[2], *crmap;
   TRIANGLE *tridata;
-  double *ASG_freq, ASG_period;
-  complx *ASG_ampl, *FWT_lam, *FWT_frs;
-  int FWTASG_nnz, *FWTASG_irow, *FWTASG_icol, icr_done;
+  double **ASG_freq, ASG_period;
+  complx **ASG_ampl, *FWT_lam, **FWT_frs;
+  int *FWTASG_nnz, **FWT_irow, **FWT_icol;
   fftw_plan *fftw_plans;
 } Sim_info;
 
@@ -165,7 +165,7 @@ typedef struct _Sim_wsp {
     Jcoupling **J;
     Quadrupole **Q;
     int thread_id, cryst_idx, ig;
-    FILE* interpol_file;
+    int *FWTASG_irow, *FWTASG_icol;
     double dw;
 } Sim_wsp;
 
@@ -180,6 +180,8 @@ int sim_calcfid(Sim_info* sim,Sim_wsp * wsp);
 int sim_calcfid_interpol(Sim_info *s, Sim_wsp *wsp);
 void store_sim_pointers(Tcl_Interp* interp, Sim_info* sim, Sim_wsp * wsp);
 void read_sim_pointers(Tcl_Interp* interp, Sim_info **sim, Sim_wsp **wsp);
+void sim_prepare_interpol(Sim_info *sim);
+void sim_preempty_interpol(Sim_info *sim);
 
 // important: _FREQ must be _TIME + 1
 #define    M_GCOMPUTE_TIME   2001

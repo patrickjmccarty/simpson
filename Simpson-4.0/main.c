@@ -50,6 +50,10 @@ int verbose = 0;
 int various = 0;
 pthread_barrier_t simpson_b_start, simpson_b_end;
 glob_info_type glob_info;
+int MAXFULLDIM;
+int MAXDIMDIAGONALIZE;
+double SPARSE_TOL;
+double SPARSITY;
 
 extern void simpson_mpi_slave(Tcl_Interp *interp);
 extern void simpson_thread_slave( void *thr_id);
@@ -79,6 +83,16 @@ int main (int argc,char *argv[])
 
 #ifdef MPI
    MPI_Init(NULL, NULL);
+   //--> might need changes to this:
+   //int mpi_thread_support;
+   //MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &mpi_thread_support);
+   //printf("asked for %d, got %d\n",MPI_THREAD_MULTIPLE,mpi_thread_support);
+   //if (mpi_thread_support < MPI_THREAD_FUNNELED) {
+   //   fprintf(stderr,"Error: MPI lib doesn't support threads\n");
+   //   exit(1);
+   //}
+   //--> end of changes
+   //--> NOTE: simpson theoretically needs just MPI_THREAD_FUNNELED level of support
    MPI_Comm_rank(MPI_COMM_WORLD, &process_id);
    MPI_Comm_size(MPI_COMM_WORLD, &num_processes);
    char processor_name[MPI_MAX_PROCESSOR_NAME];
@@ -138,7 +152,7 @@ int main (int argc,char *argv[])
 	   }
 #ifdef MPI
 	   /* set par(MPI_rank) and par(MPI_size) */
-	   obj = Tcl_NewIntObj(process_id);
+	   Tcl_Obj *obj = Tcl_NewIntObj(process_id);
 	   obj = Tcl_SetVar2Ex(interp,"par","MPI_rank",obj,TCL_GLOBAL_ONLY);
 	   if (obj == NULL) {
 		   fprintf(stderr,"Error when setting 'par(MPI_rank)':\n%s\n",Tcl_GetStringResult(interp));
@@ -151,6 +165,11 @@ int main (int argc,char *argv[])
 		   exit(1);
 	   }
 #endif
+	   /* set up some globals */
+	   MAXFULLDIM = TclGetInt(interp,"par","maxfulldim",0,10);
+	   MAXDIMDIAGONALIZE = TclGetInt(interp,"par","maxdimdiagonalize",0,4096);
+	   SPARSITY = TclGetDouble(interp,"par","sparsity",0,0.8);
+	   SPARSE_TOL = TclGetDouble(interp,"par","sparse_tol",0,1.0e-6);
 	   /* read par(num_cores) and start threads */
 	   par_num_cores = TclGetInt(interp,"par","num_cores",0,0);
 #ifdef WIN32

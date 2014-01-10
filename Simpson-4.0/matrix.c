@@ -123,29 +123,45 @@ void create_sqmat_complx(mat_complx *obj, int dim, int type, int nnz, int basis)
    case MAT_DENSE :
 	   nnz = dim*dim;
 	   obj->data = (complx*)malloc(nnz*sizeof(complx));
+	   if (obj->data == NULL) {
+		   fprintf(stderr,"Error: out of memory (create_sqmat_complx data)\n");
+		   exit(1);
+	   }
 	   break;
    case MAT_DENSE_DIAG :
 	   nnz = dim;
 	   obj->data = (complx*)malloc(nnz*sizeof(complx));
+	   if (obj->data == NULL) {
+		   fprintf(stderr,"Error: out of memory (create_sqmat_complx data)\n");
+		   exit(1);
+	   }
 	   break;
    case MAT_SPARSE :
    case MAT_SPARSE_DIAG :
 		if (nnz != 0) {
 			obj->data = (complx*)malloc(nnz*sizeof(complx));
+			if (obj->data == NULL) {
+				fprintf(stderr,"Error: out of memory (create_sqmat_complx data)\n");
+				exit(1);
+			}
 			obj->icol = (MKL_INT*)calloc(nnz,sizeof(MKL_INT));
+			if (obj->icol == NULL) {
+				fprintf(stderr,"Error: out of memory (create_sqmat_complx icol)\n");
+				exit(1);
+			}
 		} else {
 			obj->data = NULL;
 			obj->icol = NULL;
 		}
 		obj->irow = (MKL_INT*)calloc((dim+1),sizeof(MKL_INT));
+		if (obj->irow == NULL) {
+			fprintf(stderr,"Error: out of memory (create_sqmat_complx irow)\n");
+			exit(1);
+		}
 		break;
    default :
 	   fprintf(stderr,"Error: create_sqmat_complx - unknown type '%d'\n",type);
 	   exit(1);
-   }
-   if (!(obj->data) && nnz) {
-      fprintf(stderr,"Error: create_sqmat_complx can not allocate mat_complx matrix (%i x %i, %d)\n", dim, dim, type);
-      exit(1);
    }
 }
 
@@ -193,18 +209,22 @@ blk_mat_complx * create_blk_mat_complx(int matdim, int Nblocks, int *blk_dims, i
 	int i;
 
 	obj = (blk_mat_complx*)malloc(sizeof(blk_mat_complx));
+	if (obj == NULL) {
+		fprintf(stderr,"Error: out of memory (create_blk_mat_complx obj)\n");
+		exit(1);
+	}
 	obj->dim = matdim;
 	obj->Nblocks = Nblocks;
 	obj->basis = basis;
 	obj->m = (mat_complx*)malloc(Nblocks*sizeof(mat_complx));
 	if (obj->m == NULL) {
-		fprintf(stderr,"Error: create_blk_mat_complx can not allocate block-matrix pointers\n");
+		fprintf(stderr,"Error: out of memory (create_blk_mat_complx m)\n");
 		exit(1);
 	}
 	if (Nblocks > 1) {
 		obj->blk_dims = (int*)malloc(Nblocks*sizeof(int));
 		if (obj->blk_dims == NULL) {
-			fprintf(stderr,"Error: create_blk_mat_complx can not allocate blk_dims\n");
+			fprintf(stderr,"Error: out of memory (create_blk_mat_complx blk_dims)\n");
 			exit(1);
 		}
 		assert(Nblocks == LEN(blk_dims));
@@ -219,6 +239,10 @@ blk_mat_complx * create_blk_mat_complx(int matdim, int Nblocks, int *blk_dims, i
 		}
 	} else {
 		obj->blk_dims = (int*)malloc(sizeof(int));
+		if (obj->blk_dims == NULL) {
+			fprintf(stderr,"Error: out of memory (create_blk_mat_complx blk_dims)\n");
+			exit(1);
+		}
 		obj->blk_dims[0] = matdim;
 		create_sqmat_complx(&(obj->m[0]),matdim,type,1,basis);
 	}
@@ -230,14 +254,22 @@ blk_mat_complx * create_blk_mat_complx_copy(blk_mat_complx *obj)
 {
 	int i;
 	blk_mat_complx *res = (blk_mat_complx*)malloc(sizeof(blk_mat_complx));
+	if (res == NULL) {
+		fprintf(stderr,"Error: out of memory (create_blk_mat_complx_copy res)\n");
+		exit(1);
+	}
 
 	res->Nblocks = obj->Nblocks;
 	res->dim = obj->dim;
 	res->basis = obj->basis;
 	res->blk_dims = (int*)malloc(res->Nblocks*sizeof(int));
+	if (res->blk_dims == NULL) {
+		fprintf(stderr,"Error: out of memory (create_blk_mat_complx_copy blk_dims)\n");
+		exit(1);
+	}
 	res->m = (mat_complx*)malloc(res->Nblocks*sizeof(mat_complx));
-	if (res->blk_dims == NULL || res->m == NULL) {
-		fprintf(stderr,"Error: create_blk_mat_complx_copy can not allocate m/blk_dims\n");
+	if (res->m == NULL) {
+		fprintf(stderr,"Error: out of memory (create_blk_mat_complx_copy m)\n");
 		exit(1);
 	}
 	for (i=0; i<res->Nblocks; i++) {
@@ -254,14 +286,22 @@ blk_mat_complx * create_blk_mat_complx_copy2(blk_mat_double *obj)
 {
 	int i;
 	blk_mat_complx *res = (blk_mat_complx*)malloc(sizeof(blk_mat_complx));
+	if (res == NULL) {
+		fprintf(stderr,"Error: out of memory (create_blk_mat_complx_copy2 res)\n");
+		exit(1);
+	}
 
 	res->Nblocks = obj->Nblocks;
 	res->dim = obj->dim;
 	res->basis = obj->basis;
 	res->blk_dims = (int*)malloc(res->Nblocks*sizeof(int));
+	if (res->blk_dims == NULL) {
+		fprintf(stderr,"Error: out of memory (create_blk_mat_complx_copy2 blk_dims)\n");
+		exit(1);
+	}
 	res->m = (mat_complx*)malloc(res->Nblocks*sizeof(mat_complx));
-	if (res->blk_dims == NULL || res->m == NULL) {
-		fprintf(stderr,"Error: create_blk_mat_complx_copy2 can not allocate m/blk_dims\n");
+	if (res->m == NULL) {
+		fprintf(stderr,"Error: out of memory (create_blk_mat_complx_copy2 m)\n");
 		exit(1);
 	}
 	for (i=0; i<res->Nblocks; i++) {
@@ -312,29 +352,45 @@ void create_sqmat_double(mat_double *obj, int dim, int type, int nnz, int basis)
    case MAT_DENSE :
 	   nnz = dim*dim;
 	   obj->data = (double*)malloc(nnz*sizeof(double));
+	   if (obj->data == NULL) {
+		   fprintf(stderr,"Error: out of memory (create_sqmat_double data)\n");
+		   exit(1);
+	   }
 	   break;
    case MAT_DENSE_DIAG :
 	   nnz = dim;
 	   obj->data = (double*)malloc(nnz*sizeof(double));
+	   if (obj->data == NULL) {
+		   fprintf(stderr,"Error: out of memory (create_sqmat_double data)\n");
+		   exit(1);
+	   }
 	   break;
    case MAT_SPARSE :
    case MAT_SPARSE_DIAG :
 		if (nnz != 0) {
 			obj->data = (double*)malloc(nnz*sizeof(double));
+			if (obj->data == NULL) {
+				fprintf(stderr,"Error: out of memory (create_sqmat_double data)\n");
+				exit(1);
+			}
 			obj->icol = (MKL_INT*)calloc(nnz,sizeof(MKL_INT));
+			if (obj->icol == NULL) {
+				fprintf(stderr,"Error: out of memory (create_sqmat_double icol)\n");
+				exit(1);
+			}
 		} else {
 			obj->data = NULL;
 			obj->icol = NULL;
 		}
 		obj->irow = (MKL_INT*)calloc((dim+1),sizeof(MKL_INT));
+		if (obj->irow == NULL) {
+			fprintf(stderr,"Error: out of memory (create_sqmat_double irow)\n");
+			exit(1);
+		}
 		break;
    default :
 	   fprintf(stderr,"Error: create_sqmat_double - unknown type '%d'\n",type);
 	   exit(1);
-   }
-   if (!(obj->data) && nnz) {
-      fprintf(stderr,"Error: create_sqmat_double can not allocate mat_complx matrix (%i x %i, %d)\n", dim, dim, type);
-      exit(1);
    }
 }
 
@@ -383,18 +439,21 @@ blk_mat_double * create_blk_mat_double(int matdim, int Nblocks, int *blk_dims, i
 	int i;
 
 	obj = (blk_mat_double*)malloc(sizeof(blk_mat_double));
+	if (obj == NULL) {
+		fprintf(stderr,"Error: out of memory (create_blk_mat_double obj)\n");
+	}
 	obj->dim = matdim;
 	obj->Nblocks = Nblocks;
 	obj->basis = basis;
 	obj->m = (mat_double*)malloc(Nblocks*sizeof(mat_double));
 	if (obj->m == NULL) {
-		fprintf(stderr,"Error: create_blk_mat_double can not allocate block-matrix pointers\n");
+		fprintf(stderr,"Error: out of memory (create_blk_mat_double m)\n");
 		exit(1);
 	}
 	if (Nblocks > 1) {
 		obj->blk_dims = (int*)malloc(Nblocks*sizeof(int));
 		if (obj->blk_dims == NULL) {
-			fprintf(stderr,"Error: create_blk_mat_double can not allocate blk_dims\n");
+			fprintf(stderr,"Error: out of memory (create_blk_mat_double blk_dims)\n");
 			exit(1);
 		}
 		assert(Nblocks == LEN(blk_dims));
@@ -409,6 +468,10 @@ blk_mat_double * create_blk_mat_double(int matdim, int Nblocks, int *blk_dims, i
 		}
 	} else {
 		obj->blk_dims = (int*)malloc(sizeof(int));
+		if (obj->blk_dims == NULL) {
+			fprintf(stderr,"Error: out of memory (create_blk_mat_double blk_dims)\n");
+			exit(1);
+		}
 		obj->blk_dims[0] = matdim;
 		create_sqmat_double(&(obj->m[0]),matdim,type,1,basis);
 	}
@@ -420,14 +483,22 @@ blk_mat_double * create_blk_mat_double_copy(blk_mat_double *obj)
 {
 	int i;
 	blk_mat_double *res = (blk_mat_double*)malloc(sizeof(blk_mat_double));
+	if (res == NULL) {
+		fprintf(stderr,"Error: out of memory (create_blk_mat_double_copy res)\n");
+		exit(1);
+	}
 
 	res->Nblocks = obj->Nblocks;
 	res->dim = obj->dim;
 	res->basis = obj->basis;
 	res->blk_dims = (int*)malloc(res->Nblocks*sizeof(int));
+	if (res->blk_dims == NULL) {
+		fprintf(stderr,"Error: out of memory (create_blk_mat_double_copy blk_dims)\n");
+		exit(1);
+	}
 	res->m = (mat_double*)malloc(res->Nblocks*sizeof(mat_double));
-	if (res->blk_dims == NULL || res->m == NULL) {
-		fprintf(stderr,"Error: create_blk_mat_double_copy can not allocate m/blk_dims\n");
+	if (res->m == NULL) {
+		fprintf(stderr,"Error: out of memory (create_blk_mat_double_copy m)\n");
 		exit(1);
 	}
 	for (i=0; i<res->Nblocks; i++) {
@@ -494,6 +565,10 @@ mat_complx * complx_matrix(int row, int col, int type, int nnz, int basis)
 	   if (row == 1 && col == 1) type = MAT_DENSE_DIAG;
 
 	   obj = (mat_complx*)(malloc(sizeof(mat_complx)));
+		if (obj == NULL) {
+			fprintf(stderr,"Error: out of memory (complx_matrix obj)\n");
+			exit(1);
+		}
 	   obj->row = row;
 	   obj->col = col;
 	   obj->icol = NULL;
@@ -504,29 +579,45 @@ mat_complx * complx_matrix(int row, int col, int type, int nnz, int basis)
 	   case MAT_DENSE :
 		   nnz = row*col;
 		   obj->data = (complx*)malloc(nnz*sizeof(complx));
+			if (obj->data == NULL) {
+				fprintf(stderr,"Error: out of memory (complx_matrix data)\n");
+				exit(1);
+			}
 		   break;
 	   case MAT_DENSE_DIAG :
 		   nnz = row;
 		   obj->data = (complx*)malloc(nnz*sizeof(complx));
+			if (obj->data == NULL) {
+				fprintf(stderr,"Error: out of memory (complx_matrix data)\n");
+				exit(1);
+			}
 		   break;
 	   case MAT_SPARSE :
 	   case MAT_SPARSE_DIAG :
 			if (nnz) {
 				obj->data = (complx*)malloc(nnz*sizeof(complx));
+				if (obj->data == NULL) {
+					fprintf(stderr,"Error: out of memory (complx_matrix data)\n");
+					exit(1);
+				}
 				obj->icol = (MKL_INT*)calloc(nnz,sizeof(MKL_INT));
+				if (obj->icol == NULL) {
+					fprintf(stderr,"Error: out of memory (complx_matrix icol)\n");
+					exit(1);
+				}
 			} else {
 				obj->data = NULL;
 				obj->icol = NULL;
 			}
 			obj->irow = (MKL_INT*)calloc((row+1),sizeof(MKL_INT));
+			if (obj->irow == NULL) {
+				fprintf(stderr,"Error: out of memory (complx_matrix irow)\n");
+				exit(1);
+			}
 			break;
 	   default :
 		   fprintf(stderr,"Error: complx_matrix - unknown type '%d'\n",type);
 		   exit(1);
-	   }
-	   if (!(obj->data) && nnz) {
-	      fprintf(stderr,"Can not allocate complex matrix (%i x %i, %s)\n", row, col, matrix_type(type));
-	      exit(1);
 	   }
 	   return obj;
 }
@@ -558,6 +649,10 @@ mat_double * double_matrix(int row, int col, int type, int nnz, int basis)
    if (row == 1 && col == 1) type = MAT_DENSE_DIAG;
 
    obj = (mat_double*)(malloc(sizeof(mat_double)));
+	if (obj == NULL) {
+		fprintf(stderr,"Error: out of memory (double_matrix obj)\n");
+		exit(1);
+	}
    obj->row = row;
    obj->col = col;
    obj->icol = NULL;
@@ -568,17 +663,37 @@ mat_double * double_matrix(int row, int col, int type, int nnz, int basis)
    case MAT_DENSE :
 	   nnz = row*col;
 	   obj->data = (double*)malloc(nnz*sizeof(double));
+		if (obj->data == NULL) {
+			fprintf(stderr,"Error: out of memory (double_matrix data)\n");
+			exit(1);
+		}
 	   break;
    case MAT_DENSE_DIAG :
 	   nnz = row;
 	   obj->data = (double*)malloc(nnz*sizeof(double));
+		if (obj->data == NULL) {
+			fprintf(stderr,"Error: out of memory (double_matrix data)\n");
+			exit(1);
+		}
 	   break;
    case MAT_SPARSE :
    case MAT_SPARSE_DIAG :
 		obj->irow = (MKL_INT*)calloc((row+1),sizeof(MKL_INT));
+		if (obj->irow == NULL) {
+			fprintf(stderr,"Error: out of memory (double_matrix irow)\n");
+			exit(1);
+		}
 		if (nnz) {
 			obj->data = (double*)malloc(nnz*sizeof(double));
+			if (obj->data == NULL) {
+				fprintf(stderr,"Error: out of memory (double_matrix data)\n");
+				exit(1);
+			}
 			obj->icol = (MKL_INT*)calloc(nnz,sizeof(MKL_INT));
+			if (obj->icol == NULL) {
+				fprintf(stderr,"Error: out of memory (double_matrix icol)\n");
+				exit(1);
+			}
 		} else {
 			obj->data = NULL;
 			obj->icol = NULL;
@@ -588,10 +703,7 @@ mat_double * double_matrix(int row, int col, int type, int nnz, int basis)
 	   fprintf(stderr,"Error: double_matrix - unknown type '%d'\n",type);
 	   exit(1);
    }
-   if (!(obj->data) && nnz) {
-      fprintf(stderr,"Can not allocate double matrix (%i x %i, %s)\n", row, col, matrix_type(type));
-      exit(1);
-   }
+
    return obj;
 }
 

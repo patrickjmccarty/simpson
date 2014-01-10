@@ -680,7 +680,7 @@ void _delay_simple(Sim_info *sim, Sim_wsp *wsp, double duration)
 	if (sim->wr < TINY) {
 		/* static case */
 		ham_hamilton(sim,wsp);
-		blk_prop_real(wsp->dU,wsp->ham_blk,duration*1e-6,sim->propmethod);
+		blk_prop_real(wsp->dU,wsp->ham_blk,duration*1e-6,sim);
 		wsp->t += duration;
 	} else {
 		/* MAS */
@@ -688,7 +688,7 @@ void _delay_simple(Sim_info *sim, Sim_wsp *wsp, double duration)
 			DEBUGPRINT("_delay_simple integration of diagonal Hamiltonian\n");
 			/* delay in pulse sequence */
 			ham_hamilton_integrate(sim,wsp,duration);
-			blk_prop_real(wsp->dU,wsp->ham_blk,1.0, sim->propmethod); // unit duration since time was integrated
+			blk_prop_real(wsp->dU,wsp->ham_blk,1.0, sim); // unit duration since time was integrated
 			wsp->t += duration;
 		} else {
 			//assert(wsp->tmpU != NULL);
@@ -702,7 +702,7 @@ void _delay_simple(Sim_info *sim, Sim_wsp *wsp, double duration)
 				//printf("STEP %i, time %f, ",i,wsp->t);
 				//blk_dm_print(wsp->ham_blk," Ham");
 				//if (i==1) {
-					blk_prop_real(wsp->dU, wsp->ham_blk, dt, sim->propmethod);
+					blk_prop_real(wsp->dU, wsp->ham_blk, dt, sim);
 				//} else {
 				//	blk_prop_real(wsp->tmpU, wsp->ham_blk, dt, sim->propmethod);
 				//	update_propagator(wsp->dU, wsp->tmpU, sim, NULL);
@@ -831,7 +831,7 @@ void _pulse_simple(Sim_info *sim, Sim_wsp *wsp, double duration)
 		//blk_dm_print(wsp->ham_blk,"_pulse HAM_TOT");
 		//printf("thread %d, cryst %d: i %d: Ham(1,1) = %10.5f\n",wsp->thread_id,wsp->cryst_idx,i,blk_dm_getelem(wsp->ham_blk,1,1));
 		//if (i == 1) {
-			blk_prop_real(wsp->dU,wsp->ham_blk,dt,sim->propmethod);
+			blk_prop_real(wsp->dU,wsp->ham_blk,dt,sim);
 		//} else {
 		//	blk_prop_real(wsp->tmpU,wsp->ham_blk,dt,sim->propmethod);
 		//	update_propagator(wsp->dU, wsp->tmpU, sim, NULL);
@@ -934,7 +934,7 @@ void _pulseid(Sim_info *sim, Sim_wsp *wsp, double duration)
 
   assert(wsp->dU != NULL);
   blk_cm_unit(wsp->dU);
-  blk_prop_real(wsp->dU,wsp->sumHrf,duration*1.0e-6,sim->propmethod);
+  blk_prop_real(wsp->dU,wsp->sumHrf,duration*1.0e-6,sim);
   blk_simtrans_zrot2(wsp->dU,wsp->sumUph);
   update_propagator(wsp->U, wsp->dU, sim, wsp);
 

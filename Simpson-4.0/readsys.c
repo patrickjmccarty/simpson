@@ -820,6 +820,21 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
 	  s->Hassembly = 0;
   }
 
+  /****************************
+  printf("Hamiltonian block structure will");
+  if (s->block_diag != 0) {
+	  printf(" be based on %d nuclei types\n",Nmz);
+	  printf("\t number of blocks: %d\n",LEN(blk_dims));
+	  printf("\t dims:");
+	  for (i=1; i<=LEN(blk_dims); i++) printf(" %d",blk_dims[i]);
+	  printf("\n");
+  } else {
+	  printf(" not be used\n");
+  }
+  exit(1);
+  ****************************/
+
+
   /* create common Hamiltonians  */
 	  int dum_type;
 	  if (s->sparse > 0) dum_type = MAT_SPARSE; else dum_type = MAT_DENSE;
@@ -835,6 +850,7 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
 	  }
 	  /* chemichal shift */
 	  for (i=0; i<s->nCS; i++) {
+		  //printf("creating shift %d\n",i);
 		  csptr = s->CS[i];
 		  csptr->T = Iz_ham(s,csptr->nuc);
 		  if (fabs(csptr->iso) > TINY ) {
@@ -859,6 +875,7 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
 	  for (i=0; i<s->nDD; i++) {
 		  ddptr = s->DD[i];
 		  n1 = ddptr->nuc[0]; n2 = ddptr->nuc[1];
+		  //printf("creating dipole %d %d \n",n1,n2);
 		  if (ss_issame(ss,n1,n2)) {
 			  ddptr->blk_T = T20(s,n1,n2);
 		  } else {

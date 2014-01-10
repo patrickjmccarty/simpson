@@ -556,7 +556,7 @@ void _pulse_shapedOC_2(Sim_info *sim, Sim_wsp *wsp, int Nelem, int *OCchanmap, i
 				blk_dm_multod(wsp->ham_blk,wsp->sumHrf,1.0);
 				//blk_dm_print(wsp->ham_blk,"Ham total real");
 				blk_cm_unit(wsp->dU);
-				blk_prop_real(wsp->dU,wsp->ham_blk,dt,sim->propmethod);
+				blk_prop_real(wsp->dU,wsp->ham_blk,dt,sim);
 				blk_simtrans_zrot2(wsp->dU,wsp->sumUph);
 				//blk_cm_print(wsp->dU,"Propagator");
 				for (k=1; k<=Nsh; k++) { /* loop over all gradshapes */
@@ -796,7 +796,7 @@ void _pulse_shapedOCprops_2(Sim_info *sim, Sim_wsp *wsp, int Nelem, int *OCchanm
 				blk_dm_multod(wsp->ham_blk,wsp->sumHrf,1.0);
 				//blk_dm_print(wsp->ham_blk,"Ham total real");
 				blk_cm_unit(wsp->dU);
-				blk_prop_real(wsp->dU,wsp->ham_blk,dt,sim->propmethod);
+				blk_prop_real(wsp->dU,wsp->ham_blk,dt,sim);
 				blk_simtrans_zrot2(wsp->dU,wsp->sumUph);
 				//blk_cm_print(wsp->dU,"Propagator");
 				for (k=1; k<=Nsh; k++) { /* loop over all gradshapes */

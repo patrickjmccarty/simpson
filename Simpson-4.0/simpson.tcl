@@ -257,13 +257,17 @@ proc spinsys_resolve { { fitval {} } } {
   }
 
   ssSetSpinsys  
+  if ![info exists spinsysres(nuclei)] {
+    puts stderr "error: spinsys has to include 'nuclei' definition"
+    exit
+  }
+  set k 1
+  foreach j $spinsysres(nuclei) {
+    set nuc($k) $j
+    incr k
+  }
   foreach i [array names spinsysres] {  
     if ![string compare $i nuclei] {
-      set k 1
-      foreach j $spinsysres($i) {
-        set nuc($k) $j
-        incr k
-      }
       continue
     }
     if ![string compare $i channels] {
@@ -334,6 +338,7 @@ proc par {data} {
     zprofile zvals relax prop_method use_sparse num_cores averaging_file
     points_per_cycle ED_symmetry
     oc_lbfgs_eps oc_lbfgs_tol_ls oc_lbfgs_max_ls_eval oc_lbfgs_m
+    sparsity sparse_tol maxfulldim maxdimdiagonalize
   }
   # ZT: added 'string', 'rfprof_file' and OC_ related to allowed parameters (above)
   # ZT: relax decides wheather relaxation is invoked

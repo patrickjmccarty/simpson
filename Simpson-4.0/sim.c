@@ -163,8 +163,10 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
 			  s->propmethod = 0; // this uses dsyevr that might not be thread safe
 		  } else if (!strncmp(buf,"pade",4)) {
 			  s->propmethod = 1;
-		  } else if (!strncmp(buf,"cheb",4)) {
-			  s->propmethod = 2;
+		  } else if (!strncmp(buf,"cheby1",6)) {
+			  s->propmethod = 2; // with Scaling & Squaring
+		  } else if (!strncmp(buf,"cheby2",6)) {
+			  s->propmethod = 6; // with Shifting & Scaling
 		  } else if (!strncmp(buf,"taylor",6)) {
 			  s->propmethod = 3;
 		  } else if (!strncmp(buf,"lanczos",7)) {
@@ -193,7 +195,7 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
 		  } else {
 			  fprintf(stderr,"Error: method option '%s' not known.\n",buf);
 			  fprintf(stderr,"Must be one of : direct/idirect/gcompute/igcompute,\n");
-			  fprintf(stderr,"               : diag/pade/chebyshev/taylor/lanczos, \n");
+			  fprintf(stderr,"               : diag/dsyev/pade/cheby1/cheby2/taylor, \n");
 			  fprintf(stderr,"               : sparse, block_diag, \n");
 			  fprintf(stderr,"               : time/frequency, \n");
 			  fprintf(stderr,"               : FWTinterpolation/ASGinterpolation/FWTASGinterpolation\n");
@@ -461,11 +463,11 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
   s->tridata = NULL;
   s->ASG_freq = NULL;
   s->ASG_ampl = NULL;
-  s->FWTASG_nnz = 0;
+  s->FWTASG_nnz = NULL;
   s->FWT_frs = NULL;
   s->FWT_lam = NULL;
-  s->FWTASG_icol = NULL;
-  s->FWTASG_irow = NULL;
+  s->FWT_icol = NULL;
+  s->FWT_irow = NULL;
 
 
   /* hack for FFTW thread safety - create plan only once and remember it */
@@ -604,13 +606,13 @@ void sim_destroy(Sim_info* s, int this_is_copy)
 	  free(s->FWT_frs);
 	  s->FWT_frs = NULL;
   }
-  if (s->FWTASG_irow != NULL) {
-	  free(s->FWTASG_irow);
-	  s->FWTASG_irow = NULL;
+  if (s->FWT_irow != NULL) {
+	  free(s->FWT_irow);
+	  s->FWT_irow = NULL;
   }
-  if (s->FWTASG_icol != NULL) {
-	  free(s->FWTASG_icol);
-	  s->FWTASG_icol = NULL;
+  if (s->FWT_icol != NULL) {
+	  free(s->FWT_icol);
+	  s->FWT_icol = NULL;
   }
   if (s->crmap != NULL) free(s->crmap);
 
@@ -620,11 +622,37 @@ void sim_destroy(Sim_info* s, int this_is_copy)
 	  s->fftw_plans = NULL;
   }
 
+  if (s->FWTASG_nnz != NULL) free_int_vector(s->FWTASG_nnz);
+  if (s->FWT_lam != NULL) {
+	  free(s->FWT_lam);
+	  s->FWT_lam = NULL;
+  }
+  if (s->FWT_frs != NULL) {
+	  free(s->FWT_frs);
+	  s->FWT_frs = NULL;
+  }
+  if (s->FWT_irow != NULL) {
+	  free(s->FWT_irow);
+	  s->FWT_irow = NULL;
+  }
+  if (s->FWT_icol != NULL) {
+	  free(s->FWT_icol);
+	  s->FWT_icol = NULL;
+  }
+  if (s->ASG_ampl != NULL) {
+	  free(s->ASG_ampl);
+	  s->ASG_ampl = NULL;
+  }
+  if (s->ASG_freq != NULL) {
+	  free(s->ASG_freq);
+	  s->ASG_freq = NULL;
+  }
+
 }
 
 /****
  * decided NOT to use this anymore - NOT UPDATED!!!!
- */
+ *
 Sim_info * sim_duplicate(Sim_info *sim)
 {
 	int i, j;
@@ -865,6 +893,7 @@ Sim_info * sim_duplicate(Sim_info *sim)
 
 	return sim2;
 }
+***/
 
 Sim_wsp * wsp_initialize(Sim_info *s)
 {
@@ -1071,6 +1100,9 @@ Sim_wsp * wsp_initialize(Sim_info *s)
 
     wsp->dw = 1.0e6/s->sw;
 
+    wsp->FWTASG_irow = NULL;
+    wsp->FWTASG_icol = NULL;
+
 	DEBUGPRINT("wsp_initialize end\n");
 
 	return wsp;
@@ -1233,6 +1265,16 @@ void wsp_destroy(Sim_info *s, Sim_wsp *wsp)
     }
     free((char *)(wsp->Q)); wsp->Q = NULL;
 
+    if (wsp->FWTASG_irow != NULL) {
+    	free(wsp->FWTASG_irow);
+    	wsp->FWTASG_irow = NULL;
+    }
+    if (wsp->FWTASG_icol != NULL) {
+    	free(wsp->FWTASG_icol);
+    	wsp->FWTASG_icol = NULL;
+    }
+
+
 }
 
 void store_sim_pointers(Tcl_Interp* interp, Sim_info* sim, Sim_wsp * wsp)
@@ -1270,6 +1312,195 @@ void read_sim_pointers(Tcl_Interp* interp, Sim_info **sim, Sim_wsp **wsp)
 	}
 	sscanf(buf,"%p",wsp);
 	//DEBUGPRINT("read_sim_pointers done (sim=%p, wsp=%p)\n",*sim,*wsp);
+}
+
+/****
+ *
+ */
+void sim_prepare_interpol(Sim_info *sim)
+{
+	int i;
+	switch (sim->interpolation) {
+	case INTERPOL_NOT_USED:
+		break;
+	case INTERPOL_FWT_ALL:
+	case INTERPOL_FWT_LAM:
+		sim->FWTASG_nnz = int_vector(LEN(sim->crdata));
+		sim->FWT_lam = (complx*)malloc(LEN(sim->crdata)*sim->matdim*sizeof(complx));
+		sim->FWT_frs = (complx**)malloc(LEN(sim->crdata)*sizeof(complx*));
+		sim->FWT_irow = (int**)malloc(LEN(sim->crdata)*sizeof(int*));
+		sim->FWT_icol = (int**)malloc(LEN(sim->crdata)*sizeof(int*));
+		if (sim->FWT_lam == NULL || sim->FWT_frs==NULL || sim->FWT_irow==NULL || sim->FWT_icol==NULL) {
+			fprintf(stderr,"Error: no more memory for sim->FWT_xxx structures\n");
+			exit(1);
+		}
+		for (i=0; i<LEN(sim->crdata); i++) {
+			sim->FWT_frs[i] = NULL;
+			sim->FWT_irow[i] = NULL;
+			sim->FWT_icol[i] = NULL;
+		}
+		break;
+	case INTERPOL_ASG:
+		sim->FWTASG_nnz = int_vector(LEN(sim->crdata));
+		sim->ASG_freq = (double**)malloc(LEN(sim->crdata)*sizeof(double*));
+		sim->ASG_ampl = (complx**)malloc(LEN(sim->crdata)*sizeof(complx*));
+		if (sim->ASG_freq == NULL || sim->ASG_ampl == NULL) {
+			fprintf(stderr,"Error: no more memory for sim->ASG_xxx structures\n");
+			exit(1);
+		}
+		for (i=0; i<LEN(sim->crdata); i++) {
+			sim->ASG_freq[i] = NULL;
+			sim->ASG_ampl[i] = NULL;
+		}
+		break;
+	case INTERPOL_FWTASG_ALL:
+	case INTERPOL_FWTASG_LAM:
+		sim->FWTASG_nnz = int_vector(LEN(sim->crdata));
+		sim->FWT_lam = (complx*)malloc(LEN(sim->crdata)*sim->matdim*sizeof(complx));
+		sim->FWT_frs = (complx**)malloc(LEN(sim->crdata)*sizeof(complx*));
+		sim->FWT_irow = (int**)malloc(LEN(sim->crdata)*sizeof(int*));
+		sim->FWT_icol = (int**)malloc(LEN(sim->crdata)*sizeof(int*));
+		if (sim->FWT_lam == NULL || sim->FWT_frs==NULL || sim->FWT_irow==NULL || sim->FWT_icol==NULL) {
+			fprintf(stderr,"Error: no more memory for sim->FWT_xxx structures\n");
+			exit(1);
+		}
+		for (i=0; i<LEN(sim->crdata); i++) {
+			sim->FWT_frs[i] = NULL;
+			sim->FWT_irow[i] = NULL;
+			sim->FWT_icol[i] = NULL;
+		}
+		sim->ASG_freq = (double**)malloc(LEN(sim->targetcrdata)*sizeof(double*));
+		sim->ASG_ampl = (complx**)malloc(LEN(sim->targetcrdata)*sizeof(complx*));
+		if (sim->ASG_freq == NULL || sim->ASG_ampl == NULL) {
+			fprintf(stderr,"Error: no more memory for sim->ASG_xxx structures\n");
+			exit(1);
+		}
+		for (i=0; i<LEN(sim->targetcrdata); i++) {
+			sim->ASG_freq[i] = NULL;
+			sim->ASG_ampl[i] = NULL;
+		}
+		break;
+	}
+}
+
+void sim_preempty_interpol(Sim_info *sim)
+{
+	int i;
+	complx *zp;
+
+	switch (sim->interpolation) {
+	case INTERPOL_NOT_USED:
+		break;
+	case INTERPOL_FWT_ALL:
+		if (LEN(sim->FWTASG_nnz) != LEN(sim->crdata)) {
+			free_int_vector(sim->FWTASG_nnz);
+			sim->FWTASG_nnz = int_vector(LEN(sim->crdata));
+		}
+		zp = (complx*) realloc(sim->FWT_lam, LEN(sim->crdata)*sim->matdim*sizeof(complx));
+		if (zp == NULL) {
+			fprintf(stderr,"Error: sim_preempty_interpol - reallocation failure\n");
+			exit(1);
+		}
+		sim->FWT_lam = zp;
+		for (i=0; i<LEN(sim->targetcrdata); i++) {
+			if (sim->FWT_frs[i] != NULL) {
+				free(sim->FWT_frs[i]);
+				sim->FWT_frs[i] = NULL;
+			}
+		}
+		for (i=0; i<LEN(sim->crdata); i++) { // _ALL done for Udiag only -> irow and icol are not changed
+			if (sim->FWT_irow[i] != NULL) {
+				free(sim->FWT_irow[i]);
+				sim->FWT_irow[i] = NULL;
+			}
+			if (sim->FWT_icol[i] != NULL) {
+				free(sim->FWT_icol[i]);
+				sim->FWT_icol[i] = NULL;
+			}
+		}
+		break;
+	case INTERPOL_FWT_LAM:
+		if (LEN(sim->FWTASG_nnz) != LEN(sim->crdata)) {
+			free_int_vector(sim->FWTASG_nnz);
+			sim->FWTASG_nnz = int_vector(LEN(sim->crdata));
+		}
+		zp = (complx*) realloc(sim->FWT_lam, LEN(sim->crdata)*sim->matdim*sizeof(complx));
+		if (zp == NULL) {
+			fprintf(stderr,"Error: sim_preempty_interpol - reallocation failure\n");
+			exit(1);
+		}
+		sim->FWT_lam = zp;
+		for (i=0; i<LEN(sim->crdata); i++) {
+			if (sim->FWT_frs[i] != NULL) {
+				free(sim->FWT_frs[i]);
+				sim->FWT_frs[i] = NULL;
+			}
+			if (sim->FWT_irow[i] != NULL) {
+				free(sim->FWT_irow[i]);
+				sim->FWT_irow[i] = NULL;
+			}
+			if (sim->FWT_icol[i] != NULL) {
+				free(sim->FWT_icol[i]);
+				sim->FWT_icol[i] = NULL;
+			}
+		}
+		break;
+	case INTERPOL_ASG:
+		for (i=0; i<LEN(sim->crdata); i++) {
+			if (sim->ASG_freq[i] != NULL) {
+				free(sim->ASG_freq[i]);
+				sim->ASG_freq[i] = NULL;
+			}
+			if (sim->ASG_ampl[i] != NULL) {
+				free(sim->ASG_ampl[i]);
+				sim->ASG_ampl[i] = NULL;
+			}
+		}
+		break;
+	case INTERPOL_FWTASG_ALL:
+		for (i=LEN(sim->crdata); i<LEN(sim->targetcrdata); i++) {
+			if (sim->FWT_frs[i] != NULL) {
+				free(sim->FWT_frs[i]);
+				sim->FWT_frs[i] = NULL;
+			}
+		}
+	case INTERPOL_FWTASG_LAM:
+		if (LEN(sim->FWTASG_nnz) != LEN(sim->crdata)) {
+			free_int_vector(sim->FWTASG_nnz);
+			sim->FWTASG_nnz = int_vector(LEN(sim->crdata));
+		}
+		zp = (complx*) realloc(sim->FWT_lam, LEN(sim->crdata)*sim->matdim*sizeof(complx));
+		if (zp == NULL) {
+			fprintf(stderr,"Error: sim_preempty_interpol - reallocation failure (FWTASG)\n");
+			exit(1);
+		}
+		sim->FWT_lam = zp;
+		for (i=0; i<LEN(sim->crdata); i++) {
+			if (sim->FWT_frs[i] != NULL) {
+				free(sim->FWT_frs[i]);
+				sim->FWT_frs[i] = NULL;
+			}
+			if (sim->FWT_irow[i] != NULL) {
+				free(sim->FWT_irow[i]);
+				sim->FWT_irow[i] = NULL;
+			}
+			if (sim->FWT_icol[i] != NULL) {
+				free(sim->FWT_icol[i]);
+				sim->FWT_icol[i] = NULL;
+			}
+		}
+		for (i=0; i<LEN(sim->targetcrdata); i++) {
+			if (sim->ASG_freq[i] != NULL) {
+				free(sim->ASG_freq[i]);
+				sim->ASG_freq[i] = NULL;
+			}
+			if (sim->ASG_ampl[i] != NULL) {
+				free(sim->ASG_ampl[i]);
+				sim->ASG_ampl[i] = NULL;
+			}
+		}
+		break;
+	}
 }
 
 /****

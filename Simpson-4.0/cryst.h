@@ -27,5 +27,8 @@ int * read_cryst_map(char *crystfile, Cryst *crdata, char *targetcrystfile, Crys
 TRIANGLE *triangle_alloc(int N);
 void triangle_free(TRIANGLE * triadata);
 TRIANGLE * read_triangle_file(char* trianame);
+void save_bin_crystfile(char* filename, Cryst * crdata);
+void save_bin_triangle_file(char* filename,TRIANGLE *tria);
+void save_bin_cryst_map(char *crystfile, char *targetcrystfile, int *map, int N);
 
 #endif

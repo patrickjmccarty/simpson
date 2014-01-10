@@ -463,7 +463,6 @@ mat_double * In_real(Sim_info* sim, mat_double * m,int spin)
 }
 
 
-
 mat_complx * Icoherence(Sim_info* sim, double* coh)
 {
   SpinSys *S=sim->ss;
@@ -846,11 +845,13 @@ blk_mat_double * zq_ham(Sim_info *sim, int n1, int n2)
 	}
 
 	// when blocking is active:
+	//printf("a is %s\n",matrix_type(a->type));
 	res = create_blk_mat_double(sim->matdim,LEN(sim->dims_table[sim->basis]),sim->dims_table[sim->basis],sim->sparse ? MAT_SPARSE : MAT_DENSE,sim->basis);
 	int sft = 1;
 	int *permvec = sim->perm_table[0+sim->basis*sim->Nbasis];
 	for (nb=0; nb<res->Nblocks; nb++) {
 		dim = res->blk_dims[nb];
+		//printf("nb = %d, dim = %d, %s\n",nb,dim,matrix_type(res->m[nb].type));
 		if (dim == 1) {
 			res->m[nb].data[0] = dm_getelem(a,permvec[sft],permvec[sft]);
 		} else if (res->m[nb].type == MAT_DENSE) {
@@ -878,6 +879,56 @@ blk_mat_double * zq_ham(Sim_info *sim, int n1, int n2)
 	return res;
 }
 
+blk_mat_double * zq_ham_permuted(Sim_info *sim, int n1, int n2)
+{
+	blk_mat_double *res;
+	mat_double *a, *b;
+	int nb,dim,i,j;
+
+	assert(n1 != n2); // this code hold for this ONLY!!!
+
+	if (sim->basis == 0) {
+		a = Ip_real(sim,n1);
+		b = Im_real(sim,n2);
+		dm_multo(a,b);
+		free_double_matrix(b);
+		res = create_blk_mat_double(sim->matdim,1,NULL,sim->sparse ? MAT_SPARSE : MAT_DENSE,sim->basis);
+		dm_zero(res->m);
+		dm_multod(res->m,a,0.5);
+		dm_transposei(a);
+		dm_multod(res->m,a,0.5);
+		free_double_matrix(a);
+	} else {
+		// when blocking is active:
+		a = Ip_real(sim,n1);
+		b = Im_real(sim,n2);
+		dm_multo(a,b);
+		free_double_matrix(b);
+		dm_permute(a,sim->perm_table[0+sim->basis*sim->Nbasis]);
+		res = create_blk_mat_double(sim->matdim,LEN(sim->dims_table[sim->basis]),sim->dims_table[sim->basis],sim->sparse ? MAT_SPARSE : MAT_DENSE,sim->basis);
+		int sft = 0;
+		for (nb=0; nb<res->Nblocks; nb++) {
+			dim = res->blk_dims[nb];
+			if (dim == 1) {
+				res->m[nb].data[0] = dm_getelem(a,sft+1,sft+1);
+			} else {
+				b = dm_extract_block(a,sft,sft,dim,dim);
+				dm_zero(&(res->m[nb]));
+				if (b != NULL) {
+					b->basis = sim->basis;
+					dm_multod(&(res->m[nb]),b,0.5);
+					dm_transposei(b);
+					dm_multod(&(res->m[nb]),b,0.5);
+					free_double_matrix(b);
+				}
+			}
+			sft += dim;
+		}
+		free_double_matrix(a);
+	}
+	return res;
+}
+
 
 blk_mat_double * II(Sim_info* sim, int n1, int n2)
 {
@@ -896,7 +947,8 @@ blk_mat_double * T20(Sim_info* sim, int n1, int n2)
 	blk_mat_double *a, *b;
 
 	a = IzIz_sqrt2by3(sim,n1,n2);
-	b = zq_ham(sim,n1,n2);
+	//b = zq_ham(sim,n1,n2);
+	b = zq_ham_permuted(sim,n1,n2);
 	//blk_dm_print(b,"zq_ham");
 	blk_dm_multod(a,b,-1.0/sqrt(6.0));
 	free_blk_mat_double(b);

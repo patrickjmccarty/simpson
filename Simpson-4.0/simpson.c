@@ -189,7 +189,7 @@ void thread_work_interpol_source(int thread_id, Tcl_Interp *interp) {
 		// WARNING!!! This works ONLY IF all MPI slaves have the same number of threads!!!
 		icr = 1 + thread_id + glob_info.num_threads*glob_info.mpi_rank + glob_info.mpi_size*glob_info.num_threads*i;
 		if (icr > thrd.ncr) break;
-		if (icr == sim->icr_done) continue;
+		//if (icr == sim->icr_done) continue;
 		wsp->cryst = sim->crdata[icr];
 		wsp->cryst_idx = icr;
 		sim_calcfid_interpol(sim, wsp);
@@ -482,27 +482,52 @@ void master_FWTinterpolate(Sim_info *sim)
 		// result is in targetplan.f
 		memcpy(&new_lam[i*ntcr],targetplan.f,ntcr*sizeof(complx));
 		//printf(" done !\n");
+		//for (icr=0; icr<ntcr; icr++) {
+		//	printf("(%d)\t %d: %g %g\n",i,icr,new_lam[i*ntcr+icr].re,new_lam[i*ntcr+icr].im);
+		//}
+		//if (i == 2) {
+		//	printf("STOP\n");
+		//	exit(1);
+		//}
 	}
 	free(sim->FWT_lam);
 	sim->FWT_lam = new_lam;
 	//printf("lams\n");
 	//for (i=0; i<ntcr*sim->matdim; i++) printf("(%d) %g, %g\n",i,sim->FWT_lam[i].re,sim->FWT_lam[i].im);
 
-	if (sim->interpolation == INTERPOL_FWT_ALL || sim->interpolation == INTERPOL_FWTASG_ALL) { // interpolate also amplitudes data
-		int Ndata = ((sim->EDsymmetry == 1) ? 1 : 2)*sim->FWTASG_nnz*sim->points_per_cycle;
-		//printf("%d, %d, %d -> %d\n",sim->EDsymmetry,sim->FWTASG_nnz,sim->points_per_cycle,Ndata);
-		complx *new_frs = (complx *)malloc(Ndata*ntcr*sizeof(complx));
-		if (new_frs == NULL) {
-			fprintf(stderr,"Error: no more memory for new_frs (FWT)\n");
+	if ( sim->interpolation == INTERPOL_FWT_ALL || sim->interpolation == INTERPOL_FWTASG_ALL) { // interpolate also amplitudes data
+		if (sim->FWTASG_nnz[1] > 0) {
+			fprintf(stderr,"Error: Can not interpolate frs for non-diagonal cases, use FWT2interpolation\n");
 			exit(1);
 		}
+		int Ndata = ((sim->EDsymmetry == 1) ? 1 : 2)*(-sim->FWTASG_nnz[1])*sim->points_per_cycle;
+		assert(Ndata > 0);
+			//printf("%d, %d, %d -> %d\n",sim->EDsymmetry,sim->FWTASG_nnz,sim->points_per_cycle,Ndata);
+			//complx *new_frs = (complx *)malloc(Ndata*ntcr*sizeof(complx));
+			//if (new_frs == NULL) {
+			//	fprintf(stderr,"Error: no more memory for new_frs (FWT)\n");
+			//	exit(1);
+			//}
+		complx **frs_pool = (complx**)malloc(ntcr*sizeof(complx*));
+		if (frs_pool == NULL) {
+			fprintf(stderr,"Error: master_interpolateFWT - no memory for frs_pool\n");
+			exit(1);
+		}
+		for (i=0; i<ntcr; i++) {
+			frs_pool[i] = (complx*)malloc(Ndata*sizeof(complx));
+			if (frs_pool[i] == NULL) {
+				fprintf(stderr,"Error: master_interpolateFWT - no memory for frs_pool element %d\n",i);
+				exit(1);
+			}
+		}
 		for (i=0; i<Ndata; i++) {
-			zz = &sim->FWT_frs[i*ncr];
+			//zz = &sim->FWT_frs[i*ncr];
 			//printf("\t(%d)\t",i);
 			for (icr=1; icr<=ncr; icr++) {
+				zz = &(sim->FWT_frs[icr-1][i]);
 				sourceplan.f[icr-1][0] = sim->crdata[icr].weight * zz->re;
 				sourceplan.f[icr-1][1] = sim->crdata[icr].weight * zz->im;
-				zz++;
+				//zz++;
 			}
 			//printf("...done");
 			// sourcedata should be ready, do the adjoint transform on source
@@ -523,11 +548,18 @@ void master_FWTinterpolate(Sim_info *sim)
 			nfsft_trafo(&targetplan);
 			//printf("...done");
 			// result is in targetplan.f
-			memcpy(&new_frs[i*ntcr],targetplan.f,ntcr*sizeof(complx));
+			//memcpy(&new_frs[i*ntcr],targetplan.f,ntcr*sizeof(complx));
+			for (icr=0; icr<ntcr; icr++) {
+				frs_pool[icr][i].re = targetplan.f[icr][0];
+				frs_pool[icr][i].im = targetplan.f[icr][1];
+			}
 			//printf("...done!\n");
 		}
+		//free(sim->FWT_frs);
+		//sim->FWT_frs = new_frs;
+		for (i=0; i<ncr; i++) free(sim->FWT_frs[i]);
 		free(sim->FWT_frs);
-		sim->FWT_frs = new_frs;
+		sim->FWT_frs = frs_pool;
 	}
 
 	nfsft_finalize(&sourceplan);
@@ -752,7 +784,7 @@ void thread_work_ASG_interpol(int thread_id)
 	}
 	fid = thrd.fids[thread_id];
 	Ntri = LEN(sim->tridata);
-	nnz = sim->FWTASG_nnz;
+	//nnz = sim->FWTASG_nnz;
 	if (sim->imethod == M_DIRECT_FREQ) {
 		npts = sim->points_per_cycle;
 		freqT = 2.0*M_PI*1e6/sim->ASG_period;
@@ -774,10 +806,26 @@ void thread_work_ASG_interpol(int thread_id)
 		itr = thread_id + glob_info.num_threads*glob_info.mpi_rank + glob_info.mpi_size*glob_info.num_threads*i;
 		if (itr >= Ntri) break;
 		tri = sim->tridata[itr + 1];
+		if (sim->interpolation == INTERPOL_ASG) {
+			nnz = abs(sim->FWTASG_nnz[tri.a]);
+			if (nnz != abs(sim->FWTASG_nnz[tri.b]) || nnz != abs(sim->FWTASG_nnz[tri.c])) {
+				fprintf(stderr,"Error: oops, non-equal nnz for triangle %d\nGiving up ASG...\n",itr+1);
+				exit(1);
+			}
+		} else { // FWTASG variants
+			nnz = abs(sim->FWTASG_nnz[sim->crmap[tri.a-1]]);
+			if (nnz != abs(sim->FWTASG_nnz[sim->crmap[tri.b-1]]) || nnz != abs(sim->FWTASG_nnz[sim->crmap[tri.c-1]])) {
+				fprintf(stderr,"Error: oops, non-equal nnz for triangle %d\nGiving up FWTASG...\n",itr+1);
+				exit(1);
+			}
+		}
 		for (j=0; j<nnz; j++) {
-			frq[0] = sim->ASG_freq[j+nnz*(tri.a - 1)];
-			frq[1] = sim->ASG_freq[j+nnz*(tri.b - 1)];
-			frq[2] = sim->ASG_freq[j+nnz*(tri.c - 1)];
+			//frq[0] = sim->ASG_freq[j+nnz*(tri.a - 1)];
+			frq[0] = sim->ASG_freq[tri.a-1][j];
+			//frq[1] = sim->ASG_freq[j+nnz*(tri.b - 1)];
+			frq[1] = sim->ASG_freq[tri.b - 1][j];
+			//frq[2] = sim->ASG_freq[j+nnz*(tri.c - 1)];
+			frq[2] = sim->ASG_freq[tri.c - 1][j];
 			// resolve possible fold of frequencies
 			unfold[0] = unfold[1] = unfold[2] = 0;
 			//unfold[1] = myround( (frq[0]-frq[1])/sim->wr );
@@ -798,12 +846,18 @@ void thread_work_ASG_interpol(int thread_id)
 				int k2 = k+unfold[2]; while (k2 < 0) k2 += npts; while (k2 >= npts) k2 -= npts;
 				//dum = sim->wr*(k-npts/2+1);
 				dum = freqT*(k-npts/2+1);
-				zw.re = w[0]*sim->ASG_ampl[k0+npts*j+(tri.a-1)*npts*nnz].re;
-				zw.re += w[1]*sim->ASG_ampl[k1+npts*j+(tri.b-1)*npts*nnz].re;
-				zw.re += w[2]*sim->ASG_ampl[k2+npts*j+(tri.c-1)*npts*nnz].re;
-				zw.im = w[0]*sim->ASG_ampl[k0+npts*j+(tri.a-1)*npts*nnz].im;
-				zw.im += w[1]*sim->ASG_ampl[k1+npts*j+(tri.b-1)*npts*nnz].im;
-				zw.im += w[2]*sim->ASG_ampl[k2+npts*j+(tri.c-1)*npts*nnz].im;
+				//zw.re = w[0]*sim->ASG_ampl[k0+npts*j+(tri.a-1)*npts*nnz].re;
+				zw.re = w[0]*sim->ASG_ampl[tri.a-1][k0+npts*j].re;
+				//zw.re += w[1]*sim->ASG_ampl[k1+npts*j+(tri.b-1)*npts*nnz].re;
+				zw.re += w[1]*sim->ASG_ampl[tri.b-1][k1+npts*j].re;
+				//zw.re += w[2]*sim->ASG_ampl[k2+npts*j+(tri.c-1)*npts*nnz].re;
+				zw.re += w[2]*sim->ASG_ampl[tri.c-1][k2+npts*j].re;
+				//zw.im = w[0]*sim->ASG_ampl[k0+npts*j+(tri.a-1)*npts*nnz].im;
+				zw.im = w[0]*sim->ASG_ampl[tri.a-1][k0+npts*j].im;
+				//zw.im += w[1]*sim->ASG_ampl[k1+npts*j+(tri.b-1)*npts*nnz].im;
+				zw.im += w[1]*sim->ASG_ampl[tri.b-1][k1+npts*j].im;
+				//zw.im += w[2]*sim->ASG_ampl[k2+npts*j+(tri.c-1)*npts*nnz].im;
+				zw.im += w[2]*sim->ASG_ampl[tri.c-1][k2+npts*j].im;
 				zw.re *= 1.0/3.0;
 				zw.im *= 1.0/3.0;
 				fa = frq[0] + dum; ia = (int)((fa+sim->sw*M_PI)/wbin) + 1;
@@ -959,7 +1013,7 @@ void simpson_thread_slave(void *thr_id)
  * this is called once in order to allocate interpolation data structures in sim
  * ONLY thread MASTER can call it !!!
  * NOT compatible with MPI !!!
- */
+ *
 void initial_interpol_run(Tcl_Interp *interp, Sim_info *sim) {
 	Sim_wsp * wsp;
 
@@ -981,6 +1035,7 @@ void initial_interpol_run(Tcl_Interp *interp, Sim_info *sim) {
 	wsp_destroy(sim, wsp);
 	free(wsp);
 }
+****/
 
 complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, double *dbls_out)
 {
@@ -1044,6 +1099,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 		double weight;
 		fidsum = complx_vector(sim->ntot);
 		cv_zero(fidsum);
+		sim_prepare_interpol(sim);
 		// all averaging except powder needs to be serial
 		for (iz=1; iz<=nz; iz++) {
 			for (iave=0; iave<Naveval; iave++) {
@@ -1063,14 +1119,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 					thrd.ave_struct = avestruct;
 					thrd.ave_weight = aveweight;
 					thrd.sim = sim;
-					if (sim->FWT_lam == NULL) {
-						sim->icr_done = ncr;
-						initial_interpol_run(interp,sim);
-					} else {
-						sim->icr_done = 0;
-					}
 					/* start calculation in threads */
-					assert(sim->FWT_frs != NULL && sim->FWT_lam != NULL);
 					glob_info.cont_thread = 2;
 					pthread_barrier_wait(&simpson_b_start);
 					/* wait for completion */
@@ -1100,6 +1149,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 						//free_complx_vector(thrd.fids[i]);
 					}
 					printf("and collected.\n");
+					sim_preempty_interpol(sim);
 					// repeat for averaging
 				}
 			}
@@ -1111,6 +1161,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 		double weight;
 		fidsum = complx_vector(sim->ntot);
 		cv_zero(fidsum);
+		sim_prepare_interpol(sim);
 		// initialize nfft library
 		//nfsft_precompute(sim->Jinterpol[1],1000.0,0U,0U);
 		// all averaging except powder needs to be serial
@@ -1132,14 +1183,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 					thrd.ave_struct = avestruct;
 					thrd.ave_weight = aveweight;
 					thrd.sim = sim;
-					if (sim->ASG_freq == NULL) {
-						sim->icr_done = ncr;
-						initial_interpol_run(interp,sim);
-					} else {
-						sim->icr_done = 0;
-					}
 					/* start calculation in threads */
-					assert(sim->ASG_freq != NULL && sim->ASG_ampl != NULL);
 					glob_info.cont_thread = 2;
 					pthread_barrier_wait(&simpson_b_start);
 					/* wait for completion */
@@ -1162,6 +1206,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 						//free_complx_vector(thrd.fids[i]);
 					}
 					//printf("and collected.\n");
+					sim_preempty_interpol(sim);
 					// repeat for averaging
 				}
 			}
@@ -1173,6 +1218,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 		double weight;
 		fidsum = complx_vector(sim->ntot);
 		cv_zero(fidsum);
+		sim_prepare_interpol(sim);
 		// all averaging except powder needs to be serial
 		for (iz=1; iz<=nz; iz++) {
 			for (iave=0; iave<Naveval; iave++) {
@@ -1192,14 +1238,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 					thrd.ave_struct = avestruct;
 					thrd.ave_weight = aveweight;
 					thrd.sim = sim;
-					if (sim->FWT_lam == NULL) {
-						sim->icr_done = ncr;
-						initial_interpol_run(interp,sim);
-					} else {
-						sim->icr_done = 0;
-					}
 					/* start FWT calculation in threads first */
-					assert(sim->FWT_frs != NULL && sim->FWT_lam != NULL);
 					glob_info.cont_thread = 2;
 					pthread_barrier_wait(&simpson_b_start);
 					/* wait for completion */
@@ -1217,16 +1256,17 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 					MPI_Barrier(MPI_COMM_WORLD);
 #endif
 					printf(" done\n");
+					// the commented below should be done in FWTinterpolate()!!!
 					// prepare data for ASG interpolation
-					if (sim->ASG_freq == NULL) {
-						sim->ASG_freq = (double*)malloc(LEN(sim->targetcrdata)*sim->FWTASG_nnz*sizeof(double));
-						sim->ASG_ampl = (complx*)malloc(LEN(sim->targetcrdata)*sim->FWTASG_nnz*sim->points_per_cycle*sizeof(complx));
-						if ( sim->ASG_freq == NULL || sim->ASG_ampl == NULL ) {
-							fprintf(stderr,"Error: thread master - no more memory for ASG data");
-							exit(1);
-						}
-					}
-					assert(sim->ASG_freq != NULL && sim->ASG_ampl != NULL);
+					//if (sim->ASG_freq == NULL) {
+					//	sim->ASG_freq = (double*)malloc(LEN(sim->targetcrdata)*sim->FWTASG_nnz*sizeof(double));
+					//	sim->ASG_ampl = (complx*)malloc(LEN(sim->targetcrdata)*sim->FWTASG_nnz*sim->points_per_cycle*sizeof(complx));
+					//	if ( sim->ASG_freq == NULL || sim->ASG_ampl == NULL ) {
+					//		fprintf(stderr,"Error: thread master - no more memory for ASG data");
+					//		exit(1);
+					//	}
+					//}
+					//assert(sim->ASG_freq != NULL && sim->ASG_ampl != NULL);
 					glob_info.cont_thread = 6;
 					pthread_barrier_wait(&simpson_b_start);
 					/* wait for completion */
@@ -1246,6 +1286,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 						//free_complx_vector(thrd.fids[i]);
 					}
 					printf("and collected.\n");
+					sim_preempty_interpol(sim);
 					// repeat for averaging
 				}
 			}
@@ -1320,7 +1361,7 @@ void simpson_mpi_slave(Tcl_Interp *interp)
 			if (intmessage[j] > 0) {
 				//if (OCpar.grad_shapes != NULL) free_int_vector(OCpar.grad_shapes);
 				OCpar.grad_shapes = int_vector(intmessage[j++]);
-				for (i=1; i<=OCpar.grad_shapes[0]; j++) OCpar.grad_shapes[i] = intmessage[j++];
+				for (i=1; i<=OCpar.grad_shapes[0]; i++) OCpar.grad_shapes[i] = intmessage[j++];
 			} else {
 				//if (OCpar.grad_shapes != NULL) free_int_vector(OCpar.grad_shapes);
 				//OCpar.grad_shapes = NULL;
@@ -1487,29 +1528,91 @@ FD* simpson(Tcl_Interp* interp, int mpirank, int mpisize)
 int tclCrystallites(ClientData data,Tcl_Interp* interp,
       int argc, Tcl_Obj *argv[])
 {
-  int n=0,i;
-  CRYSTALLITE* c;
-  char name[64];
-    
-  if (argc != 2) {
-    interp->result = "Usage: crystallites <crystal_file>";
-    return TCL_ERROR;
-  }
-  
-  sprintf(name, "%s_cryst", Tcl_GetString(argv[1]));
-  
-  while (strlen(cryst_names[n])) {
-    if (!strcmp(cryst_names[n],name)) {
-      c = cryst_pointers[n];
-      for (i=0;i<cryst_numbers[n];i++) {
-        TclAppendResult(interp,"%g %g %g",c[i].alpha,c[i].beta,c[i].weight);
-      }
-      return TCL_OK;
-    }
-    n++;
+  int i, *map;
+  char name1[256], name2[256];
+  Cryst *cr1=NULL, *cr2=NULL;
+  TRIANGLE *tria;
+  int savebin = 0;
+  int what = 0;
+
+  for (i=2; i<argc; i++) {
+	  strcpy(name1, Tcl_GetString(argv[i]));
+	  if (!strncmp(name1,"-savebin",8)) {
+		  savebin = 1;
+	  } else if (!strncmp(name1,"-tri",4)) {
+		  what = 1;
+	  } else if (!strncmp(name1,"-map",4)) {
+		  what = 2;
+	  } else { // this seems to be a crystallite set
+		  if (cr2 != NULL) {
+			  Tcl_SetResult(interp,"Error in crystallites: confusion in parameters",TCL_VOLATILE);
+			  return TCL_ERROR;
+		  }
+		  cr2 = read_crystfile(name1, 1, -1);
+		  strcpy(name2, name1);
+	  }
   }
 
-  return TclError(interp,"crystallites: unable to find internal crystal file '%s'", argv[1]);
+  strcpy(name1, Tcl_GetString(argv[1]));
+  //printf("what = %d, name1 = '%s', savebin = %d\n",what,name1,savebin);
+  switch (what) {
+  case 0: // work on crystallites
+	  cr1 = read_crystfile(name1, 1, -1);
+	  if (savebin == 0) {
+		  Tcl_ResetResult(interp);
+		  for (i=1;i<=LEN(cr1);i++) {
+			  TclAppendResult(interp,"%g %g %g",cr1[i].alpha,cr1[i].beta,cr1[i].weight);
+		  }
+	  } else {
+		  save_bin_crystfile(name1,cr1);
+	  }
+	  cryst_free(cr1);
+	  break;
+  case 1: // work on triangles
+	  tria = read_triangle_file(name1);
+	  if (savebin == 0) {
+		  for (i=1;i<=LEN(tria);i++) {
+			  TclAppendResult(interp,"%d %d %d",tria[i].a,tria[i].b,tria[i].c);
+		  }
+	  } else {
+		  save_bin_triangle_file(name1,tria);
+	  }
+	  triangle_free(tria);
+	  break;
+  case 2: // work on crystallite sets map
+	  cr1 = read_crystfile(name1, 1, -1);
+	  if (cr1 == NULL || cr2 == NULL) {
+		  Tcl_SetResult(interp,"Error in crystallites: need two crystallite sets when -map set",TCL_VOLATILE);
+		  return TCL_ERROR;
+	  }
+	  map = read_cryst_map(name1, cr1, name2, cr2);
+	  if (savebin == 0) {
+		  for (i=1;i<=LEN(cr2);i++) {
+			  TclAppendResult(interp,"%d %d",i,map[i-1]);
+		  }
+	  } else {
+		  save_bin_cryst_map(name1, name2, map, LEN(cr2));
+	  }
+	  cryst_free(cr1);
+	  cryst_free(cr2);
+	  break;
+  }
+  return TCL_OK;
+
+	/***
+	   sprintf(name, "%s_cryst", Tcl_GetString(argv[1]));
+	  while (strlen(cryst_names[n])) {
+		  if (!strcmp(cryst_names[n],name)) {
+			  c = cryst_pointers[n];
+			  for (i=0;i<cryst_numbers[n];i++) {
+				  TclAppendResult(interp,"%g %g %g",c[i].alpha,c[i].beta,c[i].weight);
+			  }
+			  return TCL_OK;
+		  }
+		  n++;
+	  }
+	  return TclError(interp,"crystallites: unable to find internal crystal file '%s'", argv[1]);
+	***/
 }
 
 int tclInternalSimpson(ClientData data,Tcl_Interp* interp,
