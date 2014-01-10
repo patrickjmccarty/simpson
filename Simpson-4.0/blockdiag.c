@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include <inttypes.h>
 #ifdef INTEL_MKL
 #include "mkl.h"
 #include "mkl_spblas.h"
@@ -116,7 +117,8 @@ mat_double * dm_get_diagblock_permute(mat_double *a, int *permvec, int sft, int 
 				}
 			}
 			break;
-		case MAT_SPARSE:
+		case MAT_SPARSE: {
+			uint64_t NNzmax = (uint64_t)floor((uint64_t)dim*dim*(1.0-SPARSITY));
 			if (dim < MAXFULLDIM) {
 				res = double_matrix(dim,dim,MAT_DENSE,0,a->basis);
 				for (i=0; i<dim; i++) {
@@ -125,10 +127,23 @@ mat_double * dm_get_diagblock_permute(mat_double *a, int *permvec, int sft, int 
 					}
 				}
 			} else {
+				//printf("in DGDP\n");
 				int r, nnz = 0;
 				double val;
-				res = double_matrix(dim,dim,MAT_SPARSE,dim*dim,a->basis);
+				// count non-zeros
+				for (i=0; i<dim; i++) {
+					r = permvec[sft+i];
+					if (a->irow[r] - a->irow[r-1] == 0) continue;
+					for (j=0; j<dim; j++) {
+						val = dm_getelem(a,r,permvec[sft+j]);
+						if (fabs(val) < SPARSE_TOL) continue;
+						nnz++;
+					}
+				}
+				// allocate and fill
+				res = double_matrix(dim,dim,MAT_SPARSE,nnz,a->basis);
 				res->irow[0] = 1;
+				nnz = 0;
 				for (i=0; i<dim; i++) {
 					res->irow[i+1] = res->irow[i];
 					r = permvec[sft+i];
@@ -143,13 +158,13 @@ mat_double * dm_get_diagblock_permute(mat_double *a, int *permvec, int sft, int 
 					}
 				}
 
-				if (nnz > dim*dim*(1.0-SPARSITY)) {
+				if (nnz > NNzmax) {
 					dm_dense(res);
 				} else {
 					dm_change_nnz(res,nnz);
 				}
 			}
-			break;
+			break; }
 		case MAT_DENSE_DIAG:
 			res = double_matrix(dim,dim,MAT_DENSE_DIAG,0,a->basis);
 			for (i=0; i<dim; i++) {
@@ -615,7 +630,7 @@ void blk_dm_change_basis(blk_mat_double *dest, blk_mat_double *from, Sim_info *s
 			}
 			case MAT_SPARSE: {
 				int k, l, ro, co, nnz = 0;
-				const int nnzmax = (int)(dim*dim*(1.0-SPARSITY));
+				const uint64_t nnzmax = (uint64_t)((uint64_t)dim*dim*(1.0-SPARSITY));
 				dm_change_nnz(dm,nnzmax);
 				dm->irow[0] = 1;
 				for (k=0; k<dim; k++) {
@@ -729,7 +744,7 @@ void blk_cm_change_basis(blk_mat_complx *dest, blk_mat_complx *from, Sim_info *s
 			}
 			case MAT_SPARSE: {
 				int k, l, ro, co, nnz = 0;
-				const int nnzmax = (int)(dim*dim*(1.0-SPARSITY));
+				const uint64_t nnzmax = (uint64_t)((uint64_t)dim*dim*(1.0-SPARSITY));
 				cm_change_nnz(&dm,nnzmax);
 				dm.irow[0] = 1;
 				for (k=0; k<dim; k++) {
@@ -1610,72 +1625,106 @@ mat_double * dm_extract_block(mat_double *cm, int r0, int c0, int Nr, int Nc)
 void cm_addto_block(mat_complx *cm, mat_complx *bm, int r0, int c0)
 {
 	// limit usage to this:
-	assert(cm->type == MAT_SPARSE);
+	//assert(cm->type == MAT_SPARSE || cm->type == MAT_DENSE);
 
 	int i, j;
 
-	switch (bm->type) {
-	case MAT_DENSE: {
-		int nnz = cm_nnz(bm);
-		mat_complx *dum = complx_matrix(cm->row,cm->col,MAT_SPARSE,nnz,cm->basis);
-		for (i=0; i<=r0; i++) dum->irow[i]=1;
-		complx *z = dum->data, *zz;
-		int *ic = dum->icol;
-		for (i=0; i<bm->row; i++) {
-			dum->irow[r0+i+1] = dum->irow[r0+i];
-			for (j=0; j<bm->col; j++) {
-				zz = bm->data + i + j*bm->row;
+	if (cm->type == MAT_SPARSE) {
+		switch (bm->type) {
+		case MAT_DENSE: {
+			int nnz = cm_nnz(bm);
+			mat_complx *dum = complx_matrix(cm->row,cm->col,MAT_SPARSE,nnz,cm->basis);
+			for (i=0; i<=r0; i++) dum->irow[i]=1;
+			complx *z = dum->data, *zz;
+			int *ic = dum->icol;
+			for (i=0; i<bm->row; i++) {
+				dum->irow[r0+i+1] = dum->irow[r0+i];
+				for (j=0; j<bm->col; j++) {
+					zz = bm->data + i + j*bm->row;
+					if (zz->re*zz->re + zz->im*zz->im > TINY) {
+						*z = *zz;
+						*ic = c0 + j + 1;
+						dum->irow[r0+i+1]++;
+						z++;
+						ic++;
+					}
+				}
+			}
+			for (i=r0+bm->row+1; i<=dum->row; i++) dum->irow[i] = dum->irow[r0+bm->row];
+			cm_addto(cm,dum);
+			free_complx_matrix(dum);
+			break; }
+		case MAT_DENSE_DIAG: {
+			int nnz = cm_nnz(bm);
+			mat_complx *dum = complx_matrix(cm->row,cm->col,MAT_SPARSE,nnz,cm->basis);
+			for (i=0; i<=r0; i++) dum->irow[i]=1;
+			complx *z = dum->data, *zz = bm->data;
+			int *ic = dum->icol;
+			for (i=0; i<bm->row; i++) {
+				dum->irow[r0+i+1] = dum->irow[r0+i];
 				if (zz->re*zz->re + zz->im*zz->im > TINY) {
 					*z = *zz;
-					*ic = c0 + j + 1;
+					*ic = c0 + i + 1;
 					dum->irow[r0+i+1]++;
 					z++;
 					ic++;
 				}
+				zz++;
 			}
-		}
-		for (i=r0+bm->row+1; i<=dum->row; i++) dum->irow[i] = dum->irow[r0+bm->row];
-		cm_addto(cm,dum);
-		free_complx_matrix(dum);
-		break; }
-	case MAT_DENSE_DIAG: {
-		int nnz = cm_nnz(bm);
-		mat_complx *dum = complx_matrix(cm->row,cm->col,MAT_SPARSE,nnz,cm->basis);
-		for (i=0; i<=r0; i++) dum->irow[i]=1;
-		complx *z = dum->data, *zz = bm->data;
-		int *ic = dum->icol;
-		for (i=0; i<bm->row; i++) {
-			dum->irow[r0+i+1] = dum->irow[r0+i];
-			if (zz->re*zz->re + zz->im*zz->im > TINY) {
-				*z = *zz;
-				*ic = c0 + i + 1;
-				dum->irow[r0+i+1]++;
-				z++;
-				ic++;
+			for (i=r0+bm->row+1; i<=dum->row; i++) dum->irow[i] = dum->irow[r0+bm->row];
+			cm_addto(cm,dum);
+			free_complx_matrix(dum);
+			break; }
+		case MAT_SPARSE:
+		case MAT_SPARSE_DIAG: {
+			int *irow = (int*)malloc((cm->row+1)*sizeof(int));
+			for (i=0; i<=r0; i++) irow[i] = 1;
+			for (i=1; i<=bm->row; i++) {
+				irow[r0+i] =  bm->irow[i];
 			}
-			zz++;
+			for (i=r0+bm->row+1; i<=cm->row; i++) irow[i] = irow[r0+bm->row];
+			for (i=0; i<bm->irow[bm->row]-1; i++) bm->icol[i] += c0;
+			free(bm->irow);
+			bm->irow = irow;
+			bm->row = cm->row;
+			bm->col = cm->col;
+			cm_addto(cm,bm);
+			break; }
+		default:
+			fprintf(stderr,"Error: cm_addto_block - unknown sub-matrix type %d\n",bm->type);
+			exit(1);
 		}
-		for (i=r0+bm->row+1; i<=dum->row; i++) dum->irow[i] = dum->irow[r0+bm->row];
-		cm_addto(cm,dum);
-		free_complx_matrix(dum);
-		break; }
-	case MAT_SPARSE:
-	case MAT_SPARSE_DIAG: {
-		int *irow = (int*)malloc((cm->row+1)*sizeof(int));
-		for (i=0; i<=r0; i++) irow[i] = 1;
-		for (i=1; i<=bm->row; i++) {
-			irow[r0+i] =  bm->irow[i];
+	} else if (cm->type == MAT_DENSE) {
+		switch (bm->type) {
+		case MAT_DENSE:
+			for (i=0; i<bm->col; i++) cblas_zaxpy(bm->row,&Cunit,&(bm->data[i*bm->row]),1,&(cm->data[r0+(c0+i)*cm->row]),1);
+			break;
+		case MAT_DENSE_DIAG:
+			for (i=0; i<bm->row; i++) {
+				cm->data[r0+i+(c0+i)*cm->row].re += bm->data[i].re;
+				cm->data[r0+i+(c0+i)*cm->row].im += bm->data[i].im;
+			}
+			break;
+		case MAT_SPARSE:
+		case MAT_SPARSE_DIAG: {
+			int *ic = bm->icol;
+			complx *z = bm->data;
+			for (i=0; i<bm->row; i++) {
+				int n = bm->irow[i+1] - bm->irow[i];
+				for (j=0; j<n; j++) {
+					cm->data[r0+i+(c0+(*ic)-1)*cm->row].re += z->re;
+					cm->data[r0+i+(c0+(*ic)-1)*cm->row].im += z->im;
+					z++;
+					ic++;
+				}
+			}
+			break; }
+		default:
+			fprintf(stderr,"Error: cm_addto_block - unknown sub-matrix type %d\n",bm->type);
+			exit(1);
 		}
-		for (i=r0+bm->row+1; i<=cm->row; i++) irow[i] = irow[r0+bm->row];
-		for (i=0; i<bm->irow[bm->row]-1; i++) bm->icol[i] += c0;
-		free(bm->irow);
-		bm->irow = irow;
-		bm->row = cm->row;
-		bm->col = cm->col;
-		cm_addto(cm,bm);
-		break; }
-	default:
-		fprintf(stderr,"Error: cm_addto_block - unknown sub-matrix type %d\n",cm->type);
+	} else {
+		fprintf(stderr,"Error: cm_addto_block - wrong cm matrix type (%s)\n",matrix_type(cm->type));
 		exit(1);
 	}
 }
@@ -2634,7 +2683,7 @@ void update_propagator(blk_mat_complx *U, blk_mat_complx *dU, Sim_info *sim, Sim
 	//blk_cm_print(wsp->U,"updatePropagator NEW PROP");
 }
 
-void blk_prop_real(blk_mat_complx *U, blk_mat_double *ham, double duration, int propmethod)
+void blk_prop_real(blk_mat_complx *U, blk_mat_double *ham, double duration, Sim_info *sim)
 {
 	int i, N;
 	mat_complx *dU;
@@ -2660,8 +2709,18 @@ void blk_prop_real(blk_mat_complx *U, blk_mat_double *ham, double duration, int 
 			dU->data[0].re = r*c - dU->data[0].im*s;
 			dU->data[0].im = r*s + dU->data[0].im*c;
 		} else {
-			//DEBUGPRINT("\tblk_prop_real: block %i is %s with %d nnz (dim = %d)\n",i,matrix_type(dH->type),dm_nnz(dH), N);
-			prop_real(dU,dH,duration,propmethod);
+			//printf("\tblk_prop_real: block %i is %s with %d nnz (dim = %d)\n",i,matrix_type(dH->type),dm_nnz(dH), N);
+			//printf("\t               dU was %s \n",matrix_type(dU->type));
+			if (sim->sparse) {
+				if (dH->type == MAT_DENSE) {
+					prop_real(dU,dH,duration,0); // via dsyevr
+				} else {
+					prop_real(dU,dH,duration,sim->propmethod);
+				}
+			} else {
+				prop_real(dU,dH,duration,sim->propmethod);
+			}
+			//printf(" blk_prop_real: END dU is %s with %d nnz\n",matrix_type(dU->type),cm_nnz(dU));
 		}
 	}
 	//blk_cm_print(U,"blk_cm_prop_real U");
@@ -2953,7 +3012,7 @@ void blk_cm_multod_extract(blk_mat_complx *blkm, mat_complx *dm, double dval)
 				free_complx_matrix(dmx);
 				break; }
 			case MAT_SPARSE: {
-				int nzmax = (int)(N*N*(1.0-SPARSITY));
+				uint64_t nzmax = (uint64_t)((uint64_t)N*N*(1.0-SPARSITY));
 				int r, c, nc, cs, pp = 0;
 				complx val;
 				mat_complx *dmx = complx_matrix(N,N,MAT_SPARSE,nzmax,blkm->basis);
@@ -3331,7 +3390,7 @@ void blk_dm_copy_2(mat_double *dest, blk_mat_double *blkm) {
 		break; }
 	case MAT_SPARSE: {
 		// cil je ridka, ale zdroj muze byt husty blok s neznamym poctem nnz
-		const int nnzmax = (int)floor(dim*dim*(1.0-SPARSITY));
+		const uint64_t nnzmax = (uint64_t)floor((uint64_t)dim*dim*(1.0-SPARSITY));
 		int nnz = blk_dm_nnz(blkm);
 		int i, NN, pos = 0;
 		if (nnz > nnzmax) {
@@ -4056,6 +4115,104 @@ blk_mat_complx * blk_cm_diag(blk_mat_complx *Ud)
 }
 
 /*****
+ *  diagonalize block matrix; on output Ud is replaced with its diagonal form
+ * and transformation block matrix is returned separately
+ * ONLY reasonably small blocks will be diagonalized
+ *****/
+blk_mat_complx * blk_cm_diag_partly(blk_mat_complx *Ud)
+{
+	blk_mat_complx *T;
+	mat_complx *bm, *tm;
+	int i, NN, lwsp = 0;
+
+	// determine maximal workspace needed for zgeev
+	for (i=0; i<Ud->Nblocks; i++) {
+		NN = Ud->blk_dims[i];
+		if (NN > lwsp) lwsp = NN;
+	}
+	if (lwsp > MAXDIMDIAGONALIZE) lwsp = MAXDIMDIAGONALIZE;
+	lwsp *= 3;
+	int info=0;
+	complx *wsp = (complx*)malloc(lwsp*sizeof(complx));
+	double *rwork = (double*)malloc(lwsp*sizeof(double));
+	if (wsp == NULL || rwork == NULL) {
+		fprintf(stderr,"Error: blk_cm_diag_partly can not allocate workspace\n");
+		exit(1);
+	}
+	const int ione = 1;
+
+	T = (blk_mat_complx*)malloc(sizeof(blk_mat_complx));
+	if (T == NULL) {
+		fprintf(stderr,"Error: blk_cm_diag_partly can not allocate T\n");
+		exit(1);
+	}
+	T->Nblocks = Ud->Nblocks;
+	T->dim = Ud->dim;
+	T->basis = Ud->basis;
+	T->blk_dims = (int*)malloc(T->Nblocks*sizeof(int));
+	T->m = (mat_complx*)malloc(T->Nblocks*sizeof(mat_complx));
+	if (T->blk_dims == NULL || T->m == NULL) {
+		fprintf(stderr,"Error: blk_cm_diag_partly can not allocate T->m/blk_dims\n");
+		exit(1);
+	}
+
+	for (i=0; i<Ud->Nblocks; i++) {
+		NN = T->blk_dims[i] = Ud->blk_dims[i];
+		bm = Ud->m + i;
+		tm = T->m + i;
+		if (NN == 1) {
+			create_sqmat_complx(tm,1,MAT_DENSE_DIAG,0,Ud->basis);
+			tm->data[0] = Cunit;
+		} else if (NN > MAXDIMDIAGONALIZE) {
+			create_sqmat_complx(tm,NN,MAT_DENSE_DIAG,0,Ud->basis);
+			cm_unit(tm);
+		} else {
+			//printf("diagonalizing block %d of dim %d\n",i+1,NN);
+			switch (bm->type) {
+			case MAT_DENSE: {
+				create_sqmat_complx(tm,NN,MAT_DENSE,0,Ud->basis);
+				mat_complx *ud = complx_matrix(NN,NN,MAT_DENSE_DIAG,0,Ud->basis);
+				zgeev_("N","V",&NN,bm->data,&NN,ud->data,NULL,&ione,tm->data,&NN,wsp,&lwsp,rwork,&info);
+				if ( info != 0) {
+					fprintf(stderr,"blk_cm_diag error: diagonalization failed for submatrix %d with the code '%d'\n", i, info);
+				    exit(1);
+				}
+				cm_swap_innards_and_destroy(bm,ud);
+				break; }
+			case MAT_DENSE_DIAG:
+				create_sqmat_complx(tm,NN,MAT_DENSE_DIAG,0,Ud->basis);
+				cm_unit(tm);
+				break;
+			case MAT_SPARSE: {
+				printf("WARNING!!! In order to diagonalize the submatrix %d (dim = %d) I need to \n"
+						"convert it from sparse to full format. The whole operation may take long time...\n",i,NN);
+				cm_dense(bm);
+				create_sqmat_complx(tm,NN,MAT_DENSE,0,Ud->basis);
+				mat_complx *ud = complx_matrix(NN,NN,MAT_DENSE_DIAG,0,Ud->basis);
+				zgeev_("N","V",&NN,bm->data,&NN,ud->data,NULL,&ione,tm->data,&NN,wsp,&lwsp,rwork,&info);
+				if ( info != 0) {
+					fprintf(stderr,"blk_cm_diag error: diagonalization failed for submatrix %d with the code '%d'\n", i, info);
+				    exit(1);
+				}
+				cm_swap_innards_and_destroy(bm,ud);
+				break; }
+			case MAT_SPARSE_DIAG:
+				cm_dense(bm);
+				create_sqmat_complx(tm,NN,MAT_DENSE_DIAG,0,Ud->basis);
+				cm_unit(tm);
+			default:
+				fprintf(stderr,"Error: blk_cm_diag - unknown submatrix %d type %d\n",i,bm->type);
+				exit(1);
+			}
+		}
+	}
+	free(wsp);
+	free(rwork);
+
+	return T;
+}
+
+/*****
  * sorts N complex numbers according to their phase. No change done on eigs,
  * just coefficient map is filled.
  */
@@ -4317,7 +4474,7 @@ mat_complx * cm_get_diagblock(mat_complx *cm, int sft,int dim)
 		memcpy(res->data,cm->data+sft,dim);
 		break;
 	case MAT_SPARSE: {
-		int nnzmax = floor(dim*dim*(1.0-SPARSITY));
+		uint64_t nnzmax = (uint64_t)floor((uint64_t)dim*dim*(1.0-SPARSITY));
 		int nnz = 0;
 		if (dim<MAXFULLDIM) {
 			res = complx_matrix(dim,dim,MAT_DENSE,0,cm->basis);
