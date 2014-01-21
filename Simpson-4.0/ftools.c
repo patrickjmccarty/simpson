@@ -1604,9 +1604,9 @@ int tclFAutoscale(ClientData data,Tcl_Interp* interp,int argc, char *argv[])
       if (i1 < i2) {
          daddscale(vec,vec2,i1,i2,part,&sumxx,&sumxy);
       }
-      free(par2);
+      Tcl_Free((char *)par2);
     }
-    free(par);
+    Tcl_Free((char *)par);
   } else {
     daddscale(vec,vec2,1,nvec,part,&sumxx,&sumxy);
   }
