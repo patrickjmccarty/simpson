@@ -476,10 +476,15 @@ void _store(Sim_info *sim, Sim_wsp *wsp, int num, int adj)
   if (wsp->STO[num] != NULL) {
 	  free_blk_mat_complx(wsp->STO[num]);
   }
-  if (adj) {
-	  wsp->STO[num] = blk_cm_adjoint(wsp->U);
+  if (wsp->Uisunit) {
+	  wsp->STO[num] = create_blk_mat_complx(sim->matdim,1,NULL,MAT_DENSE_DIAG,sim->basis);
+	  blk_cm_unit(wsp->STO[num]);
   } else {
-	  wsp->STO[num] = blk_cm_dup(wsp->U);
+	  if (adj) {
+		  wsp->STO[num] = blk_cm_adjoint(wsp->U);
+	  } else {
+		  wsp->STO[num] = blk_cm_dup(wsp->U);
+	  }
   }
   wsp->STO_tproplength_usec[num] = wsp->t - wsp->tpropstart;
   wsp->STO_tpropstart_usec[num] = wsp->tpropstart;

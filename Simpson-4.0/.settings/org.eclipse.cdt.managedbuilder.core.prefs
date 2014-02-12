@@ -1,4 +1,3 @@
-#Mon Aug 19 21:32:10 CEST 2013
 eclipse.preferences.version=1
 environment/buildEnvironmentInclude/cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.107772950.787737434/CPATH/delimiter=;
 environment/buildEnvironmentInclude/cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.107772950.787737434/CPATH/operation=remove
@@ -12,6 +11,12 @@ environment/buildEnvironmentInclude/cdt.managedbuild.config.gnu.exe.release.1789
 environment/buildEnvironmentInclude/cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.1371527718/C_INCLUDE_PATH/operation=remove
 environment/buildEnvironmentInclude/cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.1371527718/append=true
 environment/buildEnvironmentInclude/cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.1371527718/appendContributed=true
+environment/buildEnvironmentInclude/cdt.managedbuild.config.gnu.mingw.exe.debug.471363445.464074298.2080505845/CPATH/delimiter=;
+environment/buildEnvironmentInclude/cdt.managedbuild.config.gnu.mingw.exe.debug.471363445.464074298.2080505845/CPATH/operation=remove
+environment/buildEnvironmentInclude/cdt.managedbuild.config.gnu.mingw.exe.debug.471363445.464074298.2080505845/C_INCLUDE_PATH/delimiter=;
+environment/buildEnvironmentInclude/cdt.managedbuild.config.gnu.mingw.exe.debug.471363445.464074298.2080505845/C_INCLUDE_PATH/operation=remove
+environment/buildEnvironmentInclude/cdt.managedbuild.config.gnu.mingw.exe.debug.471363445.464074298.2080505845/append=true
+environment/buildEnvironmentInclude/cdt.managedbuild.config.gnu.mingw.exe.debug.471363445.464074298.2080505845/appendContributed=true
 environment/buildEnvironmentLibrary/cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.107772950.787737434/LIBRARY_PATH/delimiter=;
 environment/buildEnvironmentLibrary/cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.107772950.787737434/LIBRARY_PATH/operation=remove
 environment/buildEnvironmentLibrary/cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.107772950.787737434/append=true
@@ -20,3 +25,7 @@ environment/buildEnvironmentLibrary/cdt.managedbuild.config.gnu.exe.release.1789
 environment/buildEnvironmentLibrary/cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.1371527718/LIBRARY_PATH/operation=remove
 environment/buildEnvironmentLibrary/cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.1371527718/append=true
 environment/buildEnvironmentLibrary/cdt.managedbuild.config.gnu.exe.release.1789508861.613851597.762884031.1834420417.1844545354.566839494.1371527718/appendContributed=true
+environment/buildEnvironmentLibrary/cdt.managedbuild.config.gnu.mingw.exe.debug.471363445.464074298.2080505845/LIBRARY_PATH/delimiter=;
+environment/buildEnvironmentLibrary/cdt.managedbuild.config.gnu.mingw.exe.debug.471363445.464074298.2080505845/LIBRARY_PATH/operation=remove
+environment/buildEnvironmentLibrary/cdt.managedbuild.config.gnu.mingw.exe.debug.471363445.464074298.2080505845/append=true
+environment/buildEnvironmentLibrary/cdt.managedbuild.config.gnu.mingw.exe.debug.471363445.464074298.2080505845/appendContributed=true
