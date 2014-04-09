@@ -312,7 +312,7 @@ void read_averaging_file(Tcl_Interp *interp, Sim_info *sim, Ave_elem **aveptr, d
 
 	   Tcl_Free((char *)parsv);
    }
-
+    fclose(fp);
    *Npar = N;
    *Nval = Nlines;
    *aveptr = ave;
