@@ -1249,13 +1249,13 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 #endif
 					// read data files and interpolate, use ONLY MPI workers
 					// NFFT library does not work properly on windows with threads
-					printf("\nInterpolating with FWT ");
+//					printf("\nInterpolating with FWT ");
 					master_FWTinterpolate(sim);
 #ifdef MPI
 					// wait somehow for all MPI slaves to finish, only then continue
 					MPI_Barrier(MPI_COMM_WORLD);
 #endif
-					printf(" done\n");
+//					printf(" done\n");
 					// the commented below should be done in FWTinterpolate()!!!
 					// prepare data for ASG interpolation
 					//if (sim->ASG_freq == NULL) {
@@ -1271,7 +1271,7 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 					pthread_barrier_wait(&simpson_b_start);
 					/* wait for completion */
 					pthread_barrier_wait(&simpson_b_end);
-					printf("\nASG data generated \n");
+//					printf("\nASG data generated \n");
 					// read all data to memory
 					mpi_work_ASGread(sim);
 					// calculate fid
@@ -1279,13 +1279,13 @@ complx * simpson_common_work(Tcl_Interp *interp, char *state, int *ints_out, dou
 					pthread_barrier_wait(&simpson_b_start);
 					/* wait for completion */
 					pthread_barrier_wait(&simpson_b_end);
-					printf("\nfids generated ... ");
+//					printf("\nfids generated ... ");
 					weight = sim->rfdata[irf][sim->ss->nchan+1] * aveweight[iave];
 					for(i=0; i<num_threads; i++){
 						cv_multod(fidsum, thrd.fids[i], weight);
 						//free_complx_vector(thrd.fids[i]);
 					}
-					printf("and collected.\n");
+//					printf("and collected.\n");
 					sim_preempty_interpol(sim);
 					// repeat for averaging
 				}
