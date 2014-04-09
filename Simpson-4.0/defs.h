@@ -57,18 +57,18 @@ extern "C" {
 #ifndef M_PI
 #   define M_PI          3.14159265358979323846
 #endif
-#define SPARSE_TOL    1.0e-6
+//#define SPARSE_TOL    1.0e-6
 #define TINY          1.0e-8
-#define SPARSITY      0.8
-#define MAXFULLDIM    10
-#define MAXDIMDIAGONALIZE    4096
+//#define SPARSITY      0.8
+//#define MAXFULLDIM    10
+//#define MAXDIMDIAGONALIZE    4096
 
 extern int verbose;
 extern int various;
-//extern int MAXFULLDIM;
-//extern int MAXDIMDIAGONALIZE;
-//extern double SPARSE_TOL;
-//extern double SPARSITY;
+extern int MAXFULLDIM;
+extern int MAXDIMDIAGONALIZE;
+extern double SPARSE_TOL;
+extern double SPARSITY;
 
 
 /* Version number of SIMPSON package */
