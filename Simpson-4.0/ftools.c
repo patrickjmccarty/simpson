@@ -1632,7 +1632,7 @@ int tclFInt(ClientData data,Tcl_Interp* interp,int argc, char *argv[])
   double area;
 
   if (argc != 3)
-    return TclError(interp,"Usage: {area1 area2 ..} fint <descr 1> {{from1 to1} {from2 to2} ..}");
+    return TclError(interp,"Usage: {area1 area2 ..} fint <descr> {{from1 to1} {from2 to2} ..}");
 
   if (Tcl_GetInt(interp,argv[1],&fidN) == TCL_ERROR)
     return TclError(interp,"fint: argument 1 must be integer <data set from>");
@@ -1681,9 +1681,9 @@ int tclFInt(ClientData data,Tcl_Interp* interp,int argc, char *argv[])
     }
     sprintf(buf,"%g",area);
     Tcl_AppendElement(interp,buf);
-    free(par2);
+    Tcl_Free((char *)par2);
   }
-  free(par);
+  Tcl_Free(par);
   return TCL_OK;
 } 
 
