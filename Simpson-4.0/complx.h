@@ -44,14 +44,19 @@ typedef struct __complx { double re,im; } complx;
 
   
 #ifdef __APPLE__
-#define inline
+    complx Complx(double re,double im);
+    complx Cadd(complx a,complx b);
+    complx Cmul(complx a,complx b);
+    complx Conj(complx z);
+    complx Cexpi(double im);
+#else
+    inline complx Complx(double re,double im);
+    inline complx Cadd(complx a,complx b);
+    inline complx Cmul(complx a,complx b);
+    inline complx Conj(complx z);
+    inline complx Cexpi(double im);
 #endif
 
-inline complx Complx(double re,double im);
-inline complx Cadd(complx a,complx b);
-inline complx Cmul(complx a,complx b);
-inline complx Conj(complx z);
-inline complx Cexpi(double im);
 
 complx Cneg(complx a);
 complx Csub(complx a,complx b);
