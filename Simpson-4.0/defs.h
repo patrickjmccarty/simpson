@@ -73,7 +73,7 @@ extern double SPARSITY;
 
 /* Version number of SIMPSON package */
 #define PACKAGE "SIMPSON"
-#define VERSION "4.0.0c"
+#define VERSION "4.0.0d"
 
 
 /* include header file for MPI setup  */

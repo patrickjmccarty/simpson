@@ -34,6 +34,11 @@
 /* NMRpipe specific inclusion */
 #include "fdatap.h"
 
+#ifdef __APPLE__
+#  ifndef __i386__
+#    define REVERSEBYTES 1
+#  endif
+#endif
 
 typedef union {
    char bits[4];
@@ -1395,7 +1400,7 @@ void FD_write_nmrpipe(char* fname,FD* fd, int phsens)
 #ifdef REVERSEBYTES
   char *swap = "-no";
 #else
-  char *swap = "-";
+  char *swap = "-no";
 #endif
 
   switch (phsens) {
