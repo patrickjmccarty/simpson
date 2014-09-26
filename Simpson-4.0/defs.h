@@ -29,6 +29,13 @@
 extern "C" {
 #endif
 
+/* Version number of SIMPSON package */
+#define PACKAGE "SIMPSON"
+#define VERSION "4.0.1"
+    
+
+    
+    
 /* verbosity parameters */
 #define VERBOSE_NOT       0
 #define VERBOSE_SPINSYS   (1 << 0)
@@ -70,10 +77,6 @@ extern int MAXDIMDIAGONALIZE;
 extern double SPARSE_TOL;
 extern double SPARSITY;
 
-
-/* Version number of SIMPSON package */
-#define PACKAGE "SIMPSON"
-#define VERSION "4.0.0d"
 
 
 /* include header file for MPI setup  */
