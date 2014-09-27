@@ -3852,6 +3852,7 @@ void gcompute_ASGdata(Sim_info *sim, Sim_wsp *wsp) {
 	    		fprintf(stderr,"Error: gCOMPUTE freq ASG - icol reallocation failure\n");
 	    		exit(1);
 	    	}
+	    	wsp->FWTASG_icol = icol;
 	    }
 	    if (wsp->thread_id == 0) sim->points_per_cycle = sim->ngamma;
 	}

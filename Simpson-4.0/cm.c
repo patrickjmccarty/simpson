@@ -5173,6 +5173,8 @@ void prop_cheby2_real(mat_complx *prop, mat_double *ham, double dt)
 	if (scaling > 1) {
 		nsq = (int)ceil(log(scaling)/log(2.0));
 		scaling = pow(2,nsq);
+	} else {
+		scaling = 1.0;
 	}
 	//printf(" --> will do %d squarings\n",nsq);
 	dm_muld(ham,-dt/scaling/dw);

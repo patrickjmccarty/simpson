@@ -1659,8 +1659,9 @@ int tclIsotopes(ClientData data,Tcl_Interp* interp,int argc, Tcl_Obj *argv[])
   char buf[256];
   ISOTOPE* ptr;
   if (argc != 1) {
-    interp->result = "Usage: isotopes  (returns a list of isotopes: number, nuclei, spin, and gyromag ratio)";
-    return TCL_ERROR;
+    //interp->result = "Usage: isotopes  (returns a list of isotopes: number, nuclei, spin, and gyromag ratio)";
+    //return TCL_ERROR;
+    return TclError(interp,"%s","Usage: isotopes  (returns a list of isotopes: number, nuclei, spin, and gyromag ratio)");
   }
 
   Tcl_ResetResult(interp);
@@ -1682,8 +1683,9 @@ int tclDist2Dip(ClientData data,Tcl_Interp* interp,int argc, Tcl_Obj *argv[])
   ISOTOPE* isop;
 
   if (argc != 4) {
-    interp->result = "dist2dip <nuc1> <nuc2> <distance> : calculates dipolar coupling (Hz) from internuclear distance (Aangstrom)";
-    return TCL_ERROR;
+    //interp->result = "dist2dip <nuc1> <nuc2> <distance> : calculates dipolar coupling (Hz) from internuclear distance (Aangstrom)";
+    //return TCL_ERROR;
+    return TclError(interp,"%s","dist2dip <nuc1> <nuc2> <distance> : calculates dipolar coupling (Hz) from internuclear distance (Aangstrom)");
   }
   nuc1=Tcl_GetString(argv[1]);
   nuc2=Tcl_GetString(argv[2]);
@@ -1736,8 +1738,9 @@ int tclGamma(ClientData data,Tcl_Interp* interp,int argc, char *argv[])
     "gamma <nuc> : returns the magnetogyric ratio of the nucleus in the unit 10^7 rad/(T s)");
     
   isop=ss_findisotope(argv[1]);
-  sprintf(interp->result,"%g",isop->gamma);
-  return TCL_OK;
+  //sprintf(interp->result,"%g",isop->gamma);
+  //return TCL_OK;
+  return TclSetResult(interp,"%g",isop->gamma);
 }
 
 

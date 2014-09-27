@@ -136,7 +136,7 @@ int main (int argc,char *argv[])
 	   }
        if (NULL == Tcl_SetVar(interp,"simpson_version",VERSION,
                               TCL_GLOBAL_ONLY | TCL_LEAVE_ERR_MSG)) {
-           fprintf(stderr,"error: %s\n",interp->result);
+           fprintf(stderr,"error: %s\n",Tcl_GetStringResult(interp));
            return TCL_ERROR;
        }
 	   /* evaluate input file */

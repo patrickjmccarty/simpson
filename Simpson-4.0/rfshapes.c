@@ -409,9 +409,9 @@ int tclRandShape(ClientData data,Tcl_Interp* interp,int argc, Tcl_Obj *argv[])
 
   
   // set Tcl result to slot index
-  sprintf(interp->result,"%d",slot);
-  
-  return TCL_OK;
+  //sprintf(interp->result,"%d",slot);
+  //return TCL_OK;
+  return TclSetResult(interp,"%d",slot);
 
 }
 
