@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B134065319D7C9E400E503C3 /* libtcl8.6.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = B134065219D7C9E400E503C3 /* libtcl8.6.dylib */; };
 		B1ECDC9017B505D700F68BD3 /* allocation.c in Sources */ = {isa = PBXBuildFile; fileRef = B1ECDC5417B505D700F68BD3 /* allocation.c */; };
 		B1ECDC9117B505D700F68BD3 /* auxmath.c in Sources */ = {isa = PBXBuildFile; fileRef = B1ECDC5617B505D700F68BD3 /* auxmath.c */; };
 		B1ECDC9217B505D700F68BD3 /* averaging.c in Sources */ = {isa = PBXBuildFile; fileRef = B1ECDC5817B505D700F68BD3 /* averaging.c */; };
@@ -39,7 +40,6 @@
 		B1ECDCAD17B505D700F68BD3 /* tclutil.c in Sources */ = {isa = PBXBuildFile; fileRef = B1ECDC8B17B505D700F68BD3 /* tclutil.c */; };
 		B1ECDCAE17B505D700F68BD3 /* wigner.c in Sources */ = {isa = PBXBuildFile; fileRef = B1ECDC8E17B505D700F68BD3 /* wigner.c */; };
 		B1ECDCB017B5061B00F68BD3 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B1ECDCAF17B5061B00F68BD3 /* Accelerate.framework */; };
-		B1ECDCB717B50F9C00F68BD3 /* Tcl.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B1ECDCB617B50F9C00F68BD3 /* Tcl.framework */; };
 		B1F6C25717D5EB4800D455FF /* pthread_barrier_mac.c in Sources */ = {isa = PBXBuildFile; fileRef = B1F6C25517D5EB4800D455FF /* pthread_barrier_mac.c */; };
 /* End PBXBuildFile section */
 
@@ -56,6 +56,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B134064E19D7C44500E503C3 /* Tcl.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Tcl.framework; path = ../../build/tcl/Tcl.framework; sourceTree = "<group>"; };
+		B134065019D7C6A500E503C3 /* Tcl.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Tcl.framework; path = ../../../Library/Frameworks/Tcl.framework; sourceTree = "<group>"; };
+		B134065219D7C9E400E503C3 /* libtcl8.6.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libtcl8.6.dylib; path = ../../../../../opt/local/lib/libtcl8.6.dylib; sourceTree = "<group>"; };
 		B1ECDC4817B504DF00F68BD3 /* simpson */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = simpson; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1ECDC5417B505D700F68BD3 /* allocation.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = allocation.c; sourceTree = SOURCE_ROOT; };
 		B1ECDC5517B505D700F68BD3 /* arithmetic_ansi.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = arithmetic_ansi.h; sourceTree = SOURCE_ROOT; };
@@ -128,7 +131,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B1ECDCB717B50F9C00F68BD3 /* Tcl.framework in Frameworks */,
+				B134065319D7C9E400E503C3 /* libtcl8.6.dylib in Frameworks */,
 				B1ECDCB017B5061B00F68BD3 /* Accelerate.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -139,6 +142,9 @@
 		B1ECDC3F17B504DF00F68BD3 = {
 			isa = PBXGroup;
 			children = (
+				B134065219D7C9E400E503C3 /* libtcl8.6.dylib */,
+				B134065019D7C6A500E503C3 /* Tcl.framework */,
+				B134064E19D7C44500E503C3 /* Tcl.framework */,
 				B1ECDCB817B50FD000F68BD3 /* Libs */,
 				B1ECDC4A17B504DF00F68BD3 /* Simpson-4.0 */,
 				B1ECDC4917B504DF00F68BD3 /* Products */,
@@ -389,7 +395,19 @@
 			buildSettings = {
 				ARCHS = "$(ARCHS_STANDARD_32_64_BIT)";
 				CLANG_LINK_OBJC_RUNTIME = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(USER_LIBRARY_DIR)/Frameworks",
+				);
 				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
+				HEADER_SEARCH_PATHS = (
+					/usr/local/include,
+					/opt/local/include,
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					/opt/local/lib,
+				);
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_LDFLAGS = (
 					/usr/local/lib/libnfft3.a,
@@ -405,7 +423,19 @@
 			buildSettings = {
 				ARCHS = "$(ARCHS_STANDARD_32_64_BIT)";
 				CLANG_LINK_OBJC_RUNTIME = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(USER_LIBRARY_DIR)/Frameworks",
+				);
 				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
+				HEADER_SEARCH_PATHS = (
+					/usr/local/include,
+					/opt/local/include,
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					/opt/local/lib,
+				);
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_LDFLAGS = (
 					/usr/local/lib/libnfft3.a,

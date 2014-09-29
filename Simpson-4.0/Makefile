@@ -7,9 +7,9 @@ OBJ = $(SRC:.c=.o)
 # WINDOWS:
 #INCLUDES = -IC:/Tcl/include -I../CBLAS/src -I/usr/local/include -I../fftw3
 #LIBRARIES = -lm libfftw3-3.dll libnfft3-0.dll tcl85.dll blas.dll cblas.dll lapack.dll -ldl -lpthread
-# Linux:
-INCLUDES = -I/usr/include/tcl
-LIBRARIES = -ltcl8.5 -llapack -lblas -lfftw3 -lnfft3
+# Linux (Ubuntu 14.04):
+INCLUDES = -I/usr/include/tcl8.5
+LIBRARIES = -ltcl8.5 -llapack -lblas -lfftw3 /usr/local/lib/libnfft3.a -lpthread -lm
 FLAGS = -DNO_CONST -O3
 
 CC = gcc
