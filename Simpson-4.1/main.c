@@ -249,8 +249,9 @@ int main (int argc,char *argv[])
 		   fprintf(stderr,"1999-2000 Mads Bak and Jimmy T. Rasmussen\n"
 	                  "2001 Mads Bak and Thomas Vosegaard\n"
 	                  "2002-2007 Thomas Vosegaard\n"
-	                  "2008 Zdenek Tosner, Thomas Vosegaard, and Niels Chr. Nielsen\n"
-			          "2009 plus Rasmus Andersen\n");
+	                  "2008-2009 Zdenek Tosner, Thomas Vosegaard, and Niels Chr. Nielsen\n"
+			          "2009 plus Rasmus Andersen\n"
+	                  "2010-2014 Zdenek Tosner, Niels Chr. Nielsen, Thomas Vosegaard\n");
 		   fprintf(stderr,"%s comes with ABSOLUTELY NO WARRANTY, for details\n",PACKAGE);
 		   fprintf(stderr,"read the COPYING file included in this distribution.\n"
 	                  "This is free software, and you are welcome to redistribute\n"
