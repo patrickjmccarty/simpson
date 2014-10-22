@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B134065319D7C9E400E503C3 /* libtcl8.6.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = B134065219D7C9E400E503C3 /* libtcl8.6.dylib */; };
+		B1C6AB2719F444A000D788F0 /* libtcl8.6.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = B1C6AB2619F444A000D788F0 /* libtcl8.6.dylib */; };
 		B1ECDC9017B505D700F68BD3 /* allocation.c in Sources */ = {isa = PBXBuildFile; fileRef = B1ECDC5417B505D700F68BD3 /* allocation.c */; };
 		B1ECDC9117B505D700F68BD3 /* auxmath.c in Sources */ = {isa = PBXBuildFile; fileRef = B1ECDC5617B505D700F68BD3 /* auxmath.c */; };
 		B1ECDC9217B505D700F68BD3 /* averaging.c in Sources */ = {isa = PBXBuildFile; fileRef = B1ECDC5817B505D700F68BD3 /* averaging.c */; };
@@ -56,9 +56,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		B134064E19D7C44500E503C3 /* Tcl.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Tcl.framework; path = ../../build/tcl/Tcl.framework; sourceTree = "<group>"; };
-		B134065019D7C6A500E503C3 /* Tcl.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Tcl.framework; path = ../../../Library/Frameworks/Tcl.framework; sourceTree = "<group>"; };
-		B134065219D7C9E400E503C3 /* libtcl8.6.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libtcl8.6.dylib; path = ../../../../../opt/local/lib/libtcl8.6.dylib; sourceTree = "<group>"; };
+		B1C6AB2619F444A000D788F0 /* libtcl8.6.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libtcl8.6.dylib; path = ../../../../../opt/local/lib/libtcl8.6.dylib; sourceTree = "<group>"; };
 		B1ECDC4817B504DF00F68BD3 /* simpson */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = simpson; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1ECDC5417B505D700F68BD3 /* allocation.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = allocation.c; sourceTree = SOURCE_ROOT; };
 		B1ECDC5517B505D700F68BD3 /* arithmetic_ansi.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = arithmetic_ansi.h; sourceTree = SOURCE_ROOT; };
@@ -121,7 +119,6 @@
 		B1ECDC8E17B505D700F68BD3 /* wigner.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = wigner.c; sourceTree = SOURCE_ROOT; };
 		B1ECDC8F17B505D700F68BD3 /* wigner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = wigner.h; sourceTree = SOURCE_ROOT; };
 		B1ECDCAF17B5061B00F68BD3 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
-		B1ECDCB617B50F9C00F68BD3 /* Tcl.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Tcl.framework; path = System/Library/Frameworks/Tcl.framework; sourceTree = SDKROOT; };
 		B1F6C25517D5EB4800D455FF /* pthread_barrier_mac.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = pthread_barrier_mac.c; sourceTree = SOURCE_ROOT; };
 		B1F6C25617D5EB4800D455FF /* pthread_barrier_mac.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = pthread_barrier_mac.h; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -131,7 +128,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B134065319D7C9E400E503C3 /* libtcl8.6.dylib in Frameworks */,
+				B1C6AB2719F444A000D788F0 /* libtcl8.6.dylib in Frameworks */,
 				B1ECDCB017B5061B00F68BD3 /* Accelerate.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -142,9 +139,7 @@
 		B1ECDC3F17B504DF00F68BD3 = {
 			isa = PBXGroup;
 			children = (
-				B134065219D7C9E400E503C3 /* libtcl8.6.dylib */,
-				B134065019D7C6A500E503C3 /* Tcl.framework */,
-				B134064E19D7C44500E503C3 /* Tcl.framework */,
+				B1C6AB2619F444A000D788F0 /* libtcl8.6.dylib */,
 				B1ECDCB817B50FD000F68BD3 /* Libs */,
 				B1ECDC4A17B504DF00F68BD3 /* Simpson-4.1 */,
 				B1ECDC4917B504DF00F68BD3 /* Products */,
@@ -231,7 +226,6 @@
 		B1ECDCB817B50FD000F68BD3 /* Libs */ = {
 			isa = PBXGroup;
 			children = (
-				B1ECDCB617B50F9C00F68BD3 /* Tcl.framework */,
 				B1ECDCAF17B5061B00F68BD3 /* Accelerate.framework */,
 			);
 			name = Libs;
