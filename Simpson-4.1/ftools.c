@@ -2756,9 +2756,9 @@ int tclFAddpeaks2D(ClientData data,Tcl_Interp* interp,int argc, char *argv[])
 	fgausslorentz2D((frq-x[i])/lb,(frq1-y[j+1])/lb1,in,lg);
       }
     }
-    free(par2);
+    Tcl_Free((char *)par2);
   }
-  free(par);
+  Tcl_Free((char *)par);
   free((char*)x);
   free((char*)y);
   return TCL_OK;
