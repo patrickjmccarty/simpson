@@ -36,6 +36,7 @@ typedef struct _Shift {
 	double iso, delta, eta, pas[3];
 	mat_double *T;
 	complx *Rmol;
+	mat_double *T2q[5];
 } Shift;
 
 typedef struct _Dipole {
@@ -43,6 +44,7 @@ typedef struct _Dipole {
 	double delta, eta, pas[3];
 	blk_mat_double *blk_T;
 	complx *Rmol;
+	mat_double *T2q[5];
 } Dipole;
 
 typedef struct _Jcoupling {
@@ -50,13 +52,15 @@ typedef struct _Jcoupling {
 	double iso, delta, eta, pas[3];
 	blk_mat_double *blk_Tiso, *blk_T;
 	complx *Rmol;
+	mat_double *T2q[5];
 } Jcoupling;
 
 typedef struct _Quadrupole {
 	int nuc, order;
 	double wq, eta, pas[3], w0;
-	mat_double *T, *Ta, *Tb;
+	mat_double *T, *Ta, *Tb, *T3a, *T3b, *T3c;
 	complx *Rmol;
+	mat_double *T2q[5];
 } Quadrupole;
 
 /*****************************
@@ -112,11 +116,14 @@ typedef struct _Sim_info {
   complx **ASG_ampl, *FWT_lam, **FWT_frs;
   int *FWTASG_nnz, **FWT_irow, **FWT_icol;
   fftw_plan *fftw_plans;
+  // testing to take average value instead of initial point Hamiltonian
+  int do_avg;
+  int labframe;
 } Sim_info;
 
 #define MAXSTO 1000
 #define ACQBLOCK_STO_INI 1001
-#define ACQBLOCK_STO_END 1280
+#define ACQBLOCK_STO_END 1500
 #define MAXOCPROPS 5120
 #define MAXOCSHAPES 4
 
@@ -157,7 +164,7 @@ typedef struct _Sim_wsp {
     mat_complx *Dmol_rot;
     blk_mat_double *Hiso, *Hiso_off, *HQ[5], *HQ_off[5];
     int Nint_off;
-    mat_double **QTa, **QTb, **MT;
+    mat_double **QTa, **QTb, **QT3a, **QT3b, **QT3c, **MT;
     blk_mat_double **MTa, **MTb;
     /* when averaging_file was added */
     Shift **CS;
@@ -167,6 +174,8 @@ typedef struct _Sim_wsp {
     int thread_id, cryst_idx, ig;
     int *FWTASG_irow, *FWTASG_icol;
     double dw;
+    // labframe
+    mat_complx *Hlab, *Hrflab;
 } Sim_wsp;
 
 

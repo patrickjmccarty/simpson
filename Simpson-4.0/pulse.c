@@ -153,12 +153,13 @@ mat_complx * get_matrix_1(Sim_info *sim, Sim_wsp *wsp,char* name)
     free_double_matrix(fham);
     dupl = 0;
   } else if (!strcmp(name,"avgham")) {
-    //double dt = wsp->t - wsp->tpropstart;
-    //m = cm_ln(wsp->U);
-    //cm_mulc(m, Complx(0.0, 1.0e6/dt));
-    //dupl = 0;
-	  fprintf(stderr,"get_matrix_1 error: avgham temporarily disabled\n");
-	  exit(1);
+    double dt = wsp->t - wsp->tpropstart;
+    blk_mat_complx *ah = blk_cm_ln(wsp->U);
+    m = complx_matrix(sim->matdim, sim->matdim, MAT_DENSE, 0, wsp->U->basis);
+    blk_cm_copy_2(m,ah);
+    cm_mulc(m, Complx(0.0, 1.0e6/dt));
+    dupl = 0;
+    free_blk_mat_complx(ah);
   } else {
     TclError(interp,"error: matrix: argument must be 'start', 'detect', 'density', 'propagator', 'avgham', or "
                     "'hamiltonian'\n");
@@ -685,13 +686,18 @@ void _delay_simple(Sim_info *sim, Sim_wsp *wsp, double duration)
 	if (sim->wr < TINY) {
 		/* static case */
 		ham_hamilton(sim,wsp);
-		blk_prop_real(wsp->dU,wsp->ham_blk,duration*1e-6,sim);
+		if (sim->labframe == 1) {
+			blk_prop_complx(wsp->dU,wsp->Hlab,duration*1e-6,sim);
+		} else {
+			blk_prop_real(wsp->dU,wsp->ham_blk,duration*1e-6,sim);
+		}
 		wsp->t += duration;
 	} else {
 		/* MAS */
 		if (sim->Hint_isdiag) {
 			DEBUGPRINT("_delay_simple integration of diagonal Hamiltonian\n");
 			/* delay in pulse sequence */
+			assert(sim->labframe != 1);
 			ham_hamilton_integrate(sim,wsp,duration);
 			blk_prop_real(wsp->dU,wsp->ham_blk,1.0, sim); // unit duration since time was integrated
 			wsp->t += duration;
@@ -707,7 +713,11 @@ void _delay_simple(Sim_info *sim, Sim_wsp *wsp, double duration)
 				//printf("STEP %i, time %f, ",i,wsp->t);
 				//blk_dm_print(wsp->ham_blk," Ham");
 				//if (i==1) {
+				if (sim->labframe == 1) {
+					blk_prop_complx(wsp->dU,wsp->Hlab,dt,sim);
+				} else {
 					blk_prop_real(wsp->dU, wsp->ham_blk, dt, sim);
+				}
 				//} else {
 				//	blk_prop_real(wsp->tmpU, wsp->ham_blk, dt, sim->propmethod);
 				//	update_propagator(wsp->dU, wsp->tmpU, sim, NULL);
@@ -809,6 +819,12 @@ int _setrfprop(Sim_info *sim, Sim_wsp *wsp)
   wsp->spinused = NULL;
 
   //blk_dm_print(wsp->sumHrf,"_setrfprop sumHrf");
+  if (sim->labframe == 1) {
+	  assert(wsp->sumHrf->Nblocks == 1);
+	  dm_copy2cm(wsp->sumHrf->m, wsp->Hrflab);
+	  simtrans_zrot2(wsp->Hrflab, wsp->sumUph);
+  }
+
   return isany;
 }
 
@@ -832,11 +848,16 @@ void _pulse_simple(Sim_info *sim, Sim_wsp *wsp, double duration)
 		ham_hamilton(sim,wsp);
 		//blk_dm_print(wsp->ham_blk,"_pulse HAM_int");
 		//blk_dm_print(wsp->sumHrf,"_pulse HAM_rf");
-		blk_dm_multod(wsp->ham_blk,wsp->sumHrf,1.0);
+		if (sim->labframe == 1) {
+			cm_multod(wsp->Hlab,wsp->Hrflab,1.0);
+			blk_prop_complx(wsp->dU,wsp->Hlab,dt,sim);
+		} else {
+			blk_dm_multod(wsp->ham_blk,wsp->sumHrf,1.0);
 		//blk_dm_print(wsp->ham_blk,"_pulse HAM_TOT");
 		//printf("thread %d, cryst %d: i %d: Ham(1,1) = %10.5f\n",wsp->thread_id,wsp->cryst_idx,i,blk_dm_getelem(wsp->ham_blk,1,1));
 		//if (i == 1) {
 			blk_prop_real(wsp->dU,wsp->ham_blk,dt,sim);
+		}
 		//} else {
 		//	blk_prop_real(wsp->tmpU,wsp->ham_blk,dt,sim->propmethod);
 		//	update_propagator(wsp->dU, wsp->tmpU, sim, NULL);
@@ -848,7 +869,9 @@ void _pulse_simple(Sim_info *sim, Sim_wsp *wsp, double duration)
 	}
 	//exit(1);
 	//blk_cm_print(wsp->dU,"_pulse pre-phase propagator");
-	blk_simtrans_zrot2(wsp->dU,wsp->sumUph);
+	if (sim->labframe == 0) {
+		blk_simtrans_zrot2(wsp->dU,wsp->sumUph);
+	}
 	//dm_print(wsp->sumUph,"_pulse sumUph");
 	//blk_cm_print(wsp->dU,"_pulse step propagator");
 }

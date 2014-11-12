@@ -305,7 +305,7 @@ char simpson_tcl[] =
     "    zprofile zvals relax prop_method use_sparse num_cores averaging_file\n"
 	"    points_per_cycle ED_symmetry\n"
 	"    oc_lbfgs_eps oc_lbfgs_tol_ls oc_lbfgs_max_ls_eval oc_lbfgs_m\n"
-	"    sparsity sparse_tol maxfulldim maxdimdiagonalize\n"
+	"    sparsity sparse_tol maxfulldim maxdimdiagonalize do_avg\n"
 	"  }\n"
     "\n"
     "  set allowsubst {\n"

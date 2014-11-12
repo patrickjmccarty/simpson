@@ -2728,6 +2728,18 @@ void blk_prop_real(blk_mat_complx *U, blk_mat_double *ham, double duration, Sim_
 	//printf("prop NNz = %i\n",blk_cm_nnz(U));
 }
 
+void blk_prop_complx(blk_mat_complx *U, mat_complx *ham, double dur, Sim_info *sim)
+{
+	assert(sim->labframe == 1);
+	assert(U->Nblocks == 1);
+	mat_complx *dum = complx_matrix(ham->row,ham->col,MAT_DENSE_DIAG, 0, ham->basis);
+
+	prop_complx(dum,ham,dur,sim->propmethod);
+	cm_multo_rev(U->m,dum);
+	free_complx_matrix(dum);
+
+}
+
 void blk_prop_complx_2(blk_mat_complx *U, mat_complx *mtx, double dur, int propmethod)
 {
 	assert(U != NULL);
@@ -3788,18 +3800,28 @@ void change_basis_pulse(Sim_info *sim, Sim_wsp *wsp, int basis)
 		}
 	}
 
-	// change basis for 2nd order quadrupoles
+	// change basis for 2nd and 3rd order quadrupoles
 	if (sim->nQ != 0) {
 		for (i=0; i<sim->nQ; i++) {
 			if (sim->Q[i]->order == 1) continue;
-			assert(wsp->QTa[i] != NULL);
-			if (wsp->QTa[i]->basis == wsp->Hiso->basis) continue;
-			if (wsp->QTa[i] != sim->Q[i]->Ta) free_double_matrix(wsp->QTa[i]);
-			wsp->QTa[i] = dm_change_basis_2(sim->Q[i]->Ta,wsp->Hiso->basis,sim);
-			assert(wsp->QTb[i] != NULL);
-			assert(wsp->QTb[i]->basis != wsp->Hiso->basis);
-			if (wsp->QTb[i] != sim->Q[i]->Tb) free_double_matrix(wsp->QTb[i]);
-			wsp->QTb[i] = dm_change_basis_2(sim->Q[i]->Tb,wsp->Hiso->basis,sim);
+			assert( (wsp->QTa[i] != NULL) && (wsp->QTb[i] != NULL) );
+			if (wsp->QTa[i]->basis != wsp->Hiso->basis) {
+				if (wsp->QTa[i] != sim->Q[i]->Ta) free_double_matrix(wsp->QTa[i]);
+				wsp->QTa[i] = dm_change_basis_2(sim->Q[i]->Ta,wsp->Hiso->basis,sim);
+				if (wsp->QTb[i] != sim->Q[i]->Tb) free_double_matrix(wsp->QTb[i]);
+				wsp->QTb[i] = dm_change_basis_2(sim->Q[i]->Tb,wsp->Hiso->basis,sim);
+			}
+			if (sim->Q[i]->order == 3) {
+				assert( (wsp->QT3a[i] != NULL) && (wsp->QT3b[i] != NULL) && (wsp->QT3c[i] != NULL) );
+				if (wsp->QT3a[i]->basis != wsp->Hiso->basis) {
+					if (wsp->QT3a[i] != sim->Q[i]->T3a) free_double_matrix(wsp->QT3a[i]);
+					wsp->QT3a[i] = dm_change_basis_2(sim->Q[i]->T3a,wsp->Hiso->basis,sim);
+					if (wsp->QT3b[i] != sim->Q[i]->T3b) free_double_matrix(wsp->QT3b[i]);
+					wsp->QT3b[i] = dm_change_basis_2(sim->Q[i]->T3b,wsp->Hiso->basis,sim);
+					if (wsp->QT3c[i] != sim->Q[i]->T3c) free_double_matrix(wsp->QT3c[i]);
+					wsp->QT3c[i] = dm_change_basis_2(sim->Q[i]->T3c,wsp->Hiso->basis,sim);
+				}
+			}
 		}
 	}
 
@@ -3904,6 +3926,17 @@ void change_basis_delay(Sim_info *sim, Sim_wsp *wsp)
 					assert(wsp->QTb[i] != sim->Q[i]->Tb && wsp->QTb[i] != NULL);
 					free_double_matrix(wsp->QTb[i]);
 					wsp->QTb[i] = sim->Q[i]->Tb;
+					if (sim->Q[i]->order == 3) {
+						assert(wsp->QT3a[i] != sim->Q[i]->T3a && wsp->QT3a[i] != NULL);
+						free_double_matrix(wsp->QT3a[i]);
+						wsp->QT3a[i] = sim->Q[i]->T3a;
+						assert(wsp->QT3b[i] != sim->Q[i]->T3b && wsp->QT3b[i] != NULL);
+						free_double_matrix(wsp->QT3b[i]);
+						wsp->QT3b[i] = sim->Q[i]->T3b;
+						assert(wsp->QT3c[i] != sim->Q[i]->T3c && wsp->QT3c[i] != NULL);
+						free_double_matrix(wsp->QT3c[i]);
+						wsp->QT3c[i] = sim->Q[i]->T3c;
+					}
 				}
 			}
 			if (sim->nMIX != 0) {
@@ -3951,6 +3984,20 @@ void change_basis_delay(Sim_info *sim, Sim_wsp *wsp)
 			if (wsp->QTb[i] != sim->Q[i]->Tb) {
 				free_double_matrix(wsp->QTb[i]);
 				wsp->QTb[i] = sim->Q[i]->Tb;
+			}
+			if (sim->Q[i]->order == 3) {
+				if (wsp->QT3a[i] != sim->Q[i]->T3a) {
+					free_double_matrix(wsp->QT3a[i]);
+					wsp->QT3a[i] = sim->Q[i]->T3a;
+				}
+				if (wsp->QT3b[i] != sim->Q[i]->T3b) {
+					free_double_matrix(wsp->QT3b[i]);
+					wsp->QT3b[i] = sim->Q[i]->T3b;
+				}
+				if (wsp->QT3c[i] != sim->Q[i]->T3c) {
+					free_double_matrix(wsp->QT3c[i]);
+					wsp->QT3c[i] = sim->Q[i]->T3c;
+				}
 			}
 		}
 		for (i=0; i<sim->nMIX; i++) {
@@ -4698,3 +4745,24 @@ int blk_cm_nnz(blk_mat_complx *blkm)
 	}
 	return nnz;
 }
+
+blk_mat_complx * blk_cm_ln(blk_mat_complx *blkm)
+{
+	int i, N;
+	mat_complx *m, *mln;
+	blk_mat_complx *res = create_blk_mat_complx_copy(blkm);
+
+	for (i=0; i<blkm->Nblocks; i++) {
+		N = blkm->blk_dims[i];
+		m = blkm->m + i;
+		mln = res->m + i;
+		if (N==1) {
+			mln->data[0] = Clog(m->data[0]);
+		} else {
+			mat_complx *dum = cm_ln(m);
+			cm_swap_innards_and_destroy(mln,dum);
+		}
+	}
+	return res;
+}
+

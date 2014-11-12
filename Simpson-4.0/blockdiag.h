@@ -42,6 +42,7 @@ mat_complx * blk_cm_mul_v1(blk_mat_complx *blkm, mat_complx *cm);
 mat_complx * blk_cm_mul_v2(mat_complx *cm, blk_mat_complx *blkm);
 void update_propagator(blk_mat_complx *U, blk_mat_complx *dU, Sim_info *sim, Sim_wsp *wsp);
 void blk_prop_real(blk_mat_complx *U, blk_mat_double *ham, double duration, Sim_info *sim);
+void blk_prop_complx(blk_mat_complx *U, mat_complx *ham, double duration, Sim_info *sim);
 void blk_prop_complx_2(blk_mat_complx *U, mat_complx *mtx, double dur, int propmethod);
 void blk_dm_multod_extract(blk_mat_double *blkm, mat_double *dm, double dval);
 void blk_cm_multod_extract(blk_mat_complx *blkm, mat_complx *dm, double dval);
@@ -65,5 +66,6 @@ int blk_cm_nnz(blk_mat_complx *blkm);
 mat_complx * cm_extract_block(mat_complx *cm, int r0, int c0, int Nr, int Nc);
 mat_double * dm_extract_block(mat_double *cm, int r0, int c0, int Nr, int Nc);
 void cm_addto_block(mat_complx *cm, mat_complx *bm, int r0, int c0);
+blk_mat_complx * blk_cm_ln(blk_mat_complx *blkm);
 
 #endif /* BLOCKDIAG_H_ */

@@ -58,6 +58,7 @@ void dm_print(mat_double *m, char *title);
 double dm_normest(mat_double *m);
 int dm_nnz(mat_double *m);
 void dm_nnz2one(mat_double *m);
+void dm_mm(double alpha, mat_double *A, mat_double *B, double beta, mat_double *C);
 
 /* complex martix operations */
 mat_complx * cm_creatediag(const char c, int dim, complx d, int basis);

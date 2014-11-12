@@ -560,12 +560,82 @@ void ham_rotate(Sim_info *s, Sim_wsp *wsp)
   }
 }
 
+
+void ham_hamilton_labframe(Sim_info *s, Sim_wsp *wsp)
+{
+	int i, q, sgn;
+	mat_complx *d2 = wigner2(s->wr*wsp->t*1.0e-6*RAD2DEG+wsp->gamma_add,wsp->brl,0.0);
+    mat_complx *ham =  wsp->Hlab;
+
+    cm_zero(ham);
+    assert(wsp->Hiso->Nblocks == 1);
+    cm_multocr(ham,wsp->Hiso->m,Complx(1.0,0));
+    if (wsp->Nint_off) {
+  	  assert(wsp->Hiso_off);
+      cm_multocr(ham,wsp->Hiso_off->m,Complx(-1.0,0));
+    }
+
+	for (i=0; i<s->nCS; i++) {
+		if (!wsp->CS_used[i] || wsp->CS_Rrot[i] == NULL) continue;
+		wig2rot(wsp->CS_Rlab[i],wsp->CS_Rrot[i],d2);
+		sgn = -1;
+		for (q=1; q<4; q++) { // T2-2 and T22 are zero for CSA
+			complx z = wsp->CS_Rlab[i][5-q];
+			z.re *= sgn; z.im *= sgn;
+			cm_multocr(ham,s->CS[i]->T2q[q], z);
+			sgn *= -1;
+		}
+	}
+	for (i=0; i<s->nDD; i++) {
+		if (!wsp->DD_used[i]) continue;
+		wig2rot(wsp->DD_Rlab[i],wsp->DD_Rrot[i],d2);
+		sgn = 1;
+		for (q=0; q<5; q++) {
+			complx z = wsp->DD_Rlab[i][5-q];
+			z.re *= sgn; z.im *= sgn;
+			cm_multocr(ham,s->DD[i]->T2q[q], z);
+			sgn *= -1;
+		}
+	}
+	for (i=0; i<s->nJ; i++) {
+		if (!wsp->J_used[i] || wsp->J_Rrot[i] == NULL) continue;
+		wig2rot(wsp->J_Rlab[i],wsp->J_Rrot[i],d2);
+		sgn = 1;
+		for (q=0; q<5; q++) {
+			complx z = wsp->J_Rlab[i][5-q];
+			z.re *= sgn; z.im *= sgn;
+			cm_multocr(ham,s->J[i]->T2q[q], z);
+			sgn *= -1;
+		}
+	}
+	for (i=0; i<s->nQ; i++) {
+		if (!wsp->Q_used[i]) continue;
+		wig2rot(wsp->Q_Rlab[i], wsp->Q_Rrot[i], d2);
+		sgn = 1;
+		for (q=0; q<5; q++) {
+			complx z = wsp->Q_Rlab[i][5-q];
+			z.re *= sgn; z.im *= sgn;
+			cm_multocr(ham,s->Q[i]->T2q[q], z);
+			sgn *= -1;
+		}
+	}
+}
+
 /* this makes final rotation ROT->LAB and creates interaction Hamiltonian */
 void ham_hamilton(Sim_info *s, Sim_wsp *wsp)
 {
+	if (s->do_avg == 1) {
+		ham_hamilton_integrate(s,wsp,wsp->dtmax);
+		blk_dm_muld(wsp->ham_blk,1.0e6/wsp->dtmax);
+		return;
+	}
+	if (s->labframe == 1) {
+		ham_hamilton_labframe(s,wsp);
+		return;
+	}
   int i;
   double dw;
-  complx *d20, cdw;
+  complx *d20, cdw, zz;
   mat_complx *d2=NULL;
 	//LARGE_INTEGER tv1, tv2, tickpsec;
 
@@ -630,7 +700,7 @@ void ham_hamilton(Sim_info *s, Sim_wsp *wsp)
 		  //DEBUGPRINT("ham_hamilton: adding quad %d order 1\n",i);
 		  if (fabs(dw) > TINY) blk_dm_multod_diag(wsp->ham_blk,wsp->Q[i]->T,dw);
 	  }
-	  if (s->Q[i]->order == 2) {
+	  if (s->Q[i]->order > 1) {
 		  cdw = Cmul(wsp->Q_Rlab[i][1],wsp->Q_Rlab[i][5]);
 		  cdw.re /= 2.0*wsp->Q[i]->w0; cdw.im /= 2.0*wsp->Q[i]->w0;
 		  assert(fabs(cdw.im) < TINY);
@@ -639,6 +709,20 @@ void ham_hamilton(Sim_info *s, Sim_wsp *wsp)
 		  cdw.re /= 2.0*wsp->Q[i]->w0; cdw.im /= 2.0*wsp->Q[i]->w0;
 		  assert(fabs(cdw.im) < TINY);
 		  if (fabs(cdw.re) > TINY) blk_dm_multod_diag(wsp->ham_blk,wsp->QTb[i],cdw.re);
+	  }
+	  if (s->Q[i]->order == 3) {
+		  dw = (wsp->Q[i]->w0)*(wsp->Q[i]->w0);
+		  cdw = Cmul(wsp->Q_Rlab[i][1],wsp->Q_Rlab[i][5]);
+		  cdw = Cmul(cdw,wsp->Q_Rlab[i][3]);
+		  blk_dm_multod_diag(wsp->ham_blk,wsp->QT3b[i],cdw.re/(4*dw));
+		  cdw = Cmul(wsp->Q_Rlab[i][4],wsp->Q_Rlab[i][4]);
+		  cdw = Cmul(cdw,wsp->Q_Rlab[i][1]);
+		  zz = Cmul(wsp->Q_Rlab[i][2],wsp->Q_Rlab[i][2]);
+		  zz = Cmul(zz,wsp->Q_Rlab[i][5]);
+		  blk_dm_multod_diag(wsp->ham_blk,wsp->QT3c[i],(cdw.re+zz.re)/dw);
+		  cdw = Cmul(wsp->Q_Rlab[i][2],wsp->Q_Rlab[i][4]);
+		  cdw = Cmul(cdw,wsp->Q_Rlab[i][3]);
+		  blk_dm_multod_diag(wsp->ham_blk,wsp->QT3a[i],cdw.re/dw);
 	  }
   }
 
@@ -651,7 +735,9 @@ void ham_hamilton(Sim_info *s, Sim_wsp *wsp)
 	  if (s->MIX[i]->type == 1) {
 		  /* Q-CSA */
 		  wig2rot(wsp->CS_Rlab[j2], wsp->CS_Rrot[j2], d2);
-		  // not implemented yet
+		  cdw = Cmul(wsp->Q_Rlab[j1][2],wsp->CS_Rlab[j2][4]);
+		  cdw = Cadd(cdw, Cmul(wsp->Q_Rlab[j1][4],wsp->CS_Rlab[j2][2]));
+		  blk_dm_multod_diag(wsp->ham_blk, wsp->MT[i], cdw.re/2.0/wsp->Q[j1]->w0);
 	  } else {
 		  /* Q-DD */
 		  wig2rot(wsp->DD_Rlab[j2], wsp->DD_Rrot[j2], d2);
@@ -715,7 +801,7 @@ void ham_hamilton_integrate(Sim_info *s, Sim_wsp *wsp, double dur)
 {
 	int i, j;
 	double dw, t;
-	complx *d20, R[6], RR[6], I[9], cdw;
+	complx *d20, R[6], RR[6], I[13], cdw;
 	mat_complx *d2=NULL;
 
 	d20 = wigner20(0.0,wsp->brl);
@@ -724,16 +810,18 @@ void ham_hamilton_integrate(Sim_info *s, Sim_wsp *wsp, double dur)
 	integ(R, t, t+dur, s->wr);
 	if (s->nQ) {
 		d2 = wigner2(0,wsp->brl,0);
-		for (i=0;i<4;i++) {
-			j = i-4;
+		for (i=0;i<6;i++) {
+			j = i-6;
 			dw = s->wr * (double)j;
 			I[i] = Cmul(Complx(0,1.0/dw),Csub(Cexpi(-(t+dur)*dw),Cexpi(-t*dw)));
 		}
-		I[4] = Complx(dur,0.0);
-		I[5] = Conj(I[3]);
-		I[6] = Conj(I[2]);
-		I[7] = Conj(I[1]);
-		I[8] = Conj(I[0]);
+		I[6] = Complx(dur,0.0);
+		I[7] = Conj(I[5]);
+		I[8] = Conj(I[4]);
+		I[9] = Conj(I[3]);
+		I[10] = Conj(I[2]);
+		I[11] = Conj(I[1]);
+		I[12] = Conj(I[0]);
 	}
 
 	blk_dm_zero(wsp->ham_blk);
@@ -803,7 +891,7 @@ void ham_hamilton_integrate(Sim_info *s, Sim_wsp *wsp, double dur)
 			//printf("vypis: (%g,%g)\n",cdw.re,cdw.im);
 			if (fabs(cdw.re) > TINY) blk_dm_multod_diag(wsp->ham_blk,wsp->Q[i]->T,cdw.re);
 		}
-		if (s->Q[i]->order == 2) {
+		if (s->Q[i]->order > 1) { // second order
 			complx cc1, cc2, c1, c2, c4, c5;
 			int l, m;
 			cc1 = cc2 = Cnull;
@@ -813,8 +901,8 @@ void ham_hamilton_integrate(Sim_info *s, Sim_wsp *wsp, double dur)
 				for (m=0;m<5;m++) {
 					c4 = Cmul(wsp->Q_Rrot[i][m+1],d2->data[m+3*5]);
 					c5 = Cmul(wsp->Q_Rrot[i][m+1],d2->data[m+4*5]);
-					cc2 = Cadd(cc2,Cmul(Cmul(c2,c4),I[l+m]));
-					cc1 = Cadd(cc1,Cmul(Cmul(c1,c5),I[l+m]));
+					cc2 = Cadd(cc2,Cmul(Cmul(c2,c4),I[l+m+2]));
+					cc1 = Cadd(cc1,Cmul(Cmul(c1,c5),I[l+m+2]));
 				}
 			}
 			//printf("vypis: (%g,%g) a (%g,%g)\n",cc1.re,cc1.im,cc2.re,cc2.im);
@@ -823,19 +911,60 @@ void ham_hamilton_integrate(Sim_info *s, Sim_wsp *wsp, double dur)
 			if (fabs(cc1.re) > TINY) blk_dm_multod_diag(wsp->ham_blk,wsp->QTa[i],cc1.re/2.0/wsp->Q[i]->w0);
 			if (fabs(cc2.re) > TINY) blk_dm_multod_diag(wsp->ham_blk,wsp->QTb[i],cc2.re/2.0/wsp->Q[i]->w0);
 		}
+		if (s->Q[i]->order == 3) {
+			complx cc1, cc2, cc3, z1a, z2a, z3a, z1b1, z2b1, z3b1, z1b2, z2b2, z3b2, z1c, z2c, z3c;
+			int l, m, n;
+			cc1 = cc2 = cc3 = Cnull;
+			for (l=0; l<5; l++) {
+				z1a = Cmul(wsp->Q_Rrot[i][l+1],d2->data[l+4*5]);
+				z1b1 = Cmul(wsp->Q_Rrot[i][l+1],d2->data[l+3*5]);
+				z1b2 = Cmul(wsp->Q_Rrot[i][l+1],d2->data[l+1*5]);
+				z1c = Cmul(wsp->Q_Rrot[i][l+1],d2->data[l+1*5]);
+				for (m=0; m<5; m++) {
+					z2a = Cmul(z1a,Cmul(wsp->Q_Rrot[i][m+1],d2->data[m+2*5]));
+					z2b1 = Cmul(z1b1,Cmul(wsp->Q_Rrot[i][m+1],d2->data[m+3*5]));
+					z2b2 = Cmul(z1b2,Cmul(wsp->Q_Rrot[i][m+1],d2->data[m+1*5]));
+					z2c = Cmul(z1c,Cmul(wsp->Q_Rrot[i][m+1],d2->data[m+2*5]));
+					for (n=0; n<5; n++) {
+						z3a = Cmul(z2a,Cmul(wsp->Q_Rrot[i][n+1],d2->data[n+0*5]));
+						cc1 = Cadd(cc1,Cmul(z3a,I[l+m+n]));
+						z3b1 = Cmul(z2b1,Cmul(wsp->Q_Rrot[i][n+1],d2->data[n+0*5]));
+						z3b2 = Cmul(z2b2,Cmul(wsp->Q_Rrot[i][n+1],d2->data[n+4*5]));
+						cc2 = Cadd(cc2,Cmul(Cadd(z3b1,z3b2),I[l+m+n]));
+						z3c = Cmul(z2c,Cmul(wsp->Q_Rrot[i][n+1],d2->data[n+3*5]));
+						cc3 = Cadd(cc3,Cmul(z3c,I[l+m+n]));
+					}
+				}
+			}
+			double w2 = (wsp->Q[i]->w0)*(wsp->Q[i]->w0);
+			blk_dm_multod_diag(wsp->ham_blk,wsp->QT3b[i],cc1.re/(4.0*w2));
+			blk_dm_multod_diag(wsp->ham_blk,wsp->QT3c[i],cc2.re/w2);
+			blk_dm_multod_diag(wsp->ham_blk,wsp->QT3a[i],cc3.re/w2);
+		}
 	}
 	/* mixing terms */
 	for (i=0; i<s->nMIX; i++) {
 		int j1 = s->MIX[i]->qidx;
 		if (!wsp->Q_used[j1]) continue;
 		int j2 = s->MIX[i]->idx;
+		complx cc1, c1, c2, c3, c4;
+		int l, m;
 		if (s->MIX[i]->type == 1) {
 			/* Q-CSA */
-			// not implemented
+			cc1 = Cnull;
+			for (l=0;l<5;l++) {
+				c2 = Cmul(wsp->Q_Rrot[j1][l+1],d2->data[l+3*5]);
+				c1 = Cmul(wsp->Q_Rrot[j1][l+1],d2->data[l+1*5]);
+				for (m=0;m<5;m++) {
+					c3 = Cmul(wsp->CS_Rrot[j2][m+1],d2->data[m+1*5]);
+					c4 = Cmul(wsp->CS_Rrot[j2][m+1],d2->data[m+3*5]);
+					cc1 = Cadd(cc1,Cmul(Cmul(c2,c3),I[l+m+2]));
+					cc1 = Cadd(cc1,Cmul(Cmul(c1,c4),I[l+m+2]));
+				}
+			}
+			blk_dm_multod_diag(wsp->ham_blk,wsp->MT[i],cc1.re/2.0/wsp->Q[j1]->w0);
 		} else {
 			/* Q-DD */
-			complx cc1, c1, c2, c3, c4;
-			int l, m;
 			cc1 = Cnull;
 			for (l=0;l<5;l++) {
 				c2 = Cmul(wsp->Q_Rrot[j1][l+1],d2->data[l+3*5]);
@@ -843,13 +972,16 @@ void ham_hamilton_integrate(Sim_info *s, Sim_wsp *wsp, double dur)
 				for (m=0;m<5;m++) {
 					c3 = Cmul(wsp->DD_Rrot[j2][m+1],d2->data[m+1*5]);
 					c4 = Cmul(wsp->DD_Rrot[j2][m+1],d2->data[m+3*5]);
-					cc1 = Cadd(cc1,Cmul(Cmul(c2,c3),I[l+m]));
-					cc1 = Cadd(cc1,Cmul(Cmul(c1,c4),I[l+m]));
+					cc1 = Cadd(cc1,Cmul(Cmul(c2,c3),I[l+m+2]));
+					cc1 = Cadd(cc1,Cmul(Cmul(c1,c4),I[l+m+2]));
 				}
 			}
 			//printf("uistup: (%g, %g)\n",cc1.re, cc1.im);
 			//assert(fabs(cc1.im) < TINY);
+			// following is according to Brinkmann
 			blk_dm_multod_diag(wsp->ham_blk,wsp->MT[i],-cc1.re/2.0/wsp->Q[j1]->w0);
+			// following is according Larsen
+			//blk_dm_multod_diag(wsp->ham_blk,wsp->MT[i],cc1.re/2.0/wsp->Q[j1]->w0);
 			if (wsp->MTa[i] != NULL) {
 				complx cc2, z1, z2, z3, z4;
 				cc1 = cc2 = Cnull;
@@ -863,10 +995,10 @@ void ham_hamilton_integrate(Sim_info *s, Sim_wsp *wsp, double dur)
 						c4 = Cmul(wsp->DD_Rrot[j2][m+1],d2->data[m+4*5]);
 						z3 = Cmul(wsp->DD_Rrot[j2][m+1],d2->data[m+1*5]);
 						z4 = Cmul(wsp->DD_Rrot[j2][m+1],d2->data[m+0*5]);
-						cc1 = Cadd(cc1,Cmul(Cmul(c1,c3),I[l+m]));
-						cc1 = Cadd(cc1,Cmul(Cmul(c2,c4),I[l+m]));
-						cc2 = Cadd(cc2,Cmul(Cmul(z1,z3),I[l+m]));
-						cc2 = Cadd(cc2,Cmul(Cmul(z2,z4),I[l+m]));
+						cc1 = Cadd(cc1,Cmul(Cmul(c1,c3),I[l+m+2]));
+						cc1 = Cadd(cc1,Cmul(Cmul(c2,c4),I[l+m+2]));
+						cc2 = Cadd(cc2,Cmul(Cmul(z1,z3),I[l+m+2]));
+						cc2 = Cadd(cc2,Cmul(Cmul(z2,z4),I[l+m+2]));
 					}
 				}
 				printf("uistup_homo1: (%g, %g)\n",cc1.re, cc1.im);

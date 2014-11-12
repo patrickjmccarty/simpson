@@ -752,9 +752,9 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
     	qptr->Rmol = Dtensor2(2.0*qptr->wq,qptr->eta);
     	qptr->Rmol = wig2roti(qptr->Rmol,qptr->pas[0],qptr->pas[1],qptr->pas[2]);
     	Naniso++;
-    	qptr->T = qptr->Ta = qptr->Tb = NULL;
-    	if (n2 > 2) {
-    		fprintf(stderr,"Error: order '%d' of quadrupolar interaction not supported\n",n2);
+    	qptr->T = qptr->Ta = qptr->Tb = qptr->T3a = qptr->T3b = qptr->T3c = NULL;
+    	if (n2 > 3) {
+    		fprintf(stderr,"Error: order '%d' of quadrupolar interaction not supported, just up to the third.\n",n2);
     		exit(1);
     	}
         if (ver) {
@@ -772,7 +772,18 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
 
     	if (NN == 1) {
     		/* syntax "mixing N" */
-    		fprintf(stderr,"Error: reading mixing - Q-CSA not implemented yet\n");
+//    		if (Tcl_GetIntFromObj(interp,vals[0],&n1) != TCL_OK) {
+//    		    fprintf(stderr,"Error: readsys - mixing - Q/CSA int conversion failure\n");
+//    		   exit(1);
+//    		}
+//    		s->MIX[(s->nMIX)++] = mptr = (Mixing*)malloc(sizeof(Mixing));
+//    		mptr->type = 1;
+//    		mptr->couple[0] = n1;
+//    		mptr->couple[1] = n1;
+//    		mptr->qidx = mptr->idx = -1;
+//    		mptr->T = NULL;
+//    		mptr->Ta = mptr->Tb = NULL;
+    		fprintf(stderr,"Error: reading mixing - syntax mixing N not supported\n");
     		exit(1);
     	} else if (NN == 2) {
     		/* syntax "mixing Nq Nd" */
@@ -785,12 +796,26 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
     			exit(1);
     		}
     		s->MIX[(s->nMIX)++] = mptr = (Mixing*)malloc(sizeof(Mixing));
-    		mptr->type = 2;
+    		if (n1 == n2) {
+    			mptr->type = 1;  // Q-CSA
+    		} else {
+    			mptr->type = 2;  // Q-DD
+    		}
     		mptr->couple[0] = n1;
     		mptr->couple[1] = n2;
     		mptr->qidx = mptr->idx = -1;
     		mptr->T = NULL;
     		mptr->Ta = mptr->Tb = NULL;
+            if (ver) {
+            	if (mptr->type == 1) {
+            		printf( "Second order mixing quadrupole-CSA\n" );
+            		printf( "   quadrupole and shift nucleus     :  %d \n",n1);
+            	} else {
+            		printf( "Second order mixing quadrupole-dipole\n" );
+            		printf( "   quadrupole nucleus     :  %d \n",n1);
+            		printf( "   dipole nuclei          :  %d and %d\n",n1,n2);
+            	}
+            }
     	} else {
     		fprintf(stderr,"Error: reading mixing - parameter count mismatch\n");
     		exit(1);
@@ -807,6 +832,13 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
     exit(1);
   }
 
+  // in labframe we do not use H assembly and block_diag
+  if (s->labframe == 1) {
+	  s->Hassembly = 0;
+	  s->block_diag = 0;
+	  s->Hint_isdiag = 0;
+	  Naniso = -Naniso;
+  }
   if (s->block_diag && !(s->Hint_isdiag)) {
 	  Nblk = LEN(blk_dims);
 	  s->basis = (1 << s->Nmz) - 1;
@@ -840,6 +872,7 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
 	  if (s->sparse > 0) dum_type = MAT_SPARSE; else dum_type = MAT_DENSE;
 	  s->Hiso = create_blk_mat_double(s->matdim,Nblk,blk_dims,Hiso_isdiag ? MAT_DENSE_DIAG : dum_type, s->basis);
 	  blk_dm_zero(s->Hiso);
+	  // initialize matrices for H assembly in rotating frame
 	  if ( s->Hassembly == 1 ) {
 		  for (i=0; i<5; i++) {
 			  s->HQ[i] = create_blk_mat_double(s->matdim,Nblk,blk_dims,HQ_isdiag ? MAT_DENSE_DIAG : dum_type, s->basis);
@@ -848,7 +881,15 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
 	  } else {
 		  for (i=0; i<5; i++) s->HQ[i] = NULL;
 	  }
-	  /* chemichal shift */
+	  if (s->labframe == 1) { // labframe simulation: add Zeeman terms for all nuclei
+		  for (i=1; i<=s->ss->nspins; i++) {
+			  mat_double *dumIz = Iz_ham(s,i);
+			  blk_dm_multod_diag(s->Hiso,dumIz,ss_gamma(s->ss,i)*s->specfreq/ss_gamma1H()*2*M_PI);
+			  free_double_matrix(dumIz);
+			  printf("Nucleus %d : Larmor freq. %15.10f\n",i,ss_gamma(s->ss,i)*s->specfreq/ss_gamma1H()*2*M_PI);
+		  }
+	  }
+	  /* chemical shift */
 	  for (i=0; i<s->nCS; i++) {
 		  //printf("creating shift %d\n",i);
 		  csptr = s->CS[i];
@@ -866,9 +907,20 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
 				  free_double_matrix(csptr->T);
 				  csptr->T = NULL;
 			  }
+			  if (s->labframe == 1) {
+				  csptr->T2q[0] = csptr->T2q[4] = NULL; // T2-2 and T22 are zero for CSA
+				  csptr->T2q[1] = Im_real(s,csptr->nuc); dm_muld(csptr->T2q[1],0.5);
+				  csptr->T2q[2] = csptr->T; csptr->T = NULL; dm_muld(csptr->T2q[2],sqrt(2.0/3.0));
+				  csptr->T2q[3] = Ip_real(s,csptr->nuc); dm_muld(csptr->T2q[3],-0.5);
+				  // readjust Rmol to agree with T2q scalings
+				  cv_muld(csptr->Rmol,sqrt(3.0/2.0));
+			  } else {
+				  csptr->T2q[0] = csptr->T2q[1] = csptr->T2q[2] = csptr->T2q[3] = csptr->T2q[4] = NULL;
+			  }
 		  } else {
 			  free_double_matrix(csptr->T);
 			  csptr->T = NULL;
+			  csptr->T2q[0] = csptr->T2q[1] = csptr->T2q[2] = csptr->T2q[3] = csptr->T2q[4] = NULL;
 		  }
 	  }
 	  /* dipole - dipole interactions */
@@ -889,6 +941,25 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
 			  blk_dm_multod(s->HQ[4],ddptr->blk_T,ddptr->Rmol[5].im);
 			  free_blk_mat_double(ddptr->blk_T);
 			  ddptr->blk_T = NULL;
+		  }
+		  if (s->labframe == 1) {
+			  mat_double *md1, *md2, *md3, *md4;
+			  md1 = Im_real(s,n1); md2 = Im_real(s,n2); md3 = Iz_ham(s,n2);
+			  ddptr->T2q[0] = dm_mul(md1,md2); dm_muld(ddptr->T2q[0],0.5);
+			  ddptr->T2q[1] = Iz_ham(s,n1); dm_multo(ddptr->T2q[1],md2); dm_mm(0.5,md1,md3,0.5,ddptr->T2q[1]);
+			  ddptr->T2q[2] = Iz_ham(s,n1); dm_multo(ddptr->T2q[2],md3);
+			  md4 = Ip_real(s,n2); dm_mm(-0.5,md1,md4,2.0,ddptr->T2q[2]);
+			  free_double_matrix(md1); md1 = Ip_real(s,n1); dm_mm(-0.5/sqrt(6.0),md1,md2,1.0/sqrt(6.0),ddptr->T2q[2]);
+			  ddptr->T2q[3] = Iz_ham(s,n1); dm_multo(ddptr->T2q[3],md4); dm_mm(-0.5,md1,md3,-0.5,ddptr->T2q[3]);
+			  ddptr->T2q[4] = dm_mul(md1,md4); dm_muld(ddptr->T2q[4],0.5);
+			  free_double_matrix(md1); free_double_matrix(md2); free_double_matrix(md3); free_double_matrix(md4);
+//			  dm_print(ddptr->T2q[0],"DD T2-2");
+//			  dm_print(ddptr->T2q[1],"DD T2-1");
+//			  dm_print(ddptr->T2q[2],"DD T20");
+//			  dm_print(ddptr->T2q[3],"DD T21");
+//			  dm_print(ddptr->T2q[4],"DD T22");
+		  } else {
+			  ddptr->T2q[0] = ddptr->T2q[1] = ddptr->T2q[2] = ddptr->T2q[3] = ddptr->T2q[4] = NULL;
 		  }
 	  }
 	  /* J-couplings */
@@ -923,7 +994,12 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
 				  free_blk_mat_double(jptr->blk_T);
 				  jptr->blk_T = NULL;
 			  }
+			  if (s->labframe == 1) {
+				  fprintf(stderr,"Error: labframe simulations do not consider J anisotropy explicitly\n");
+				  exit(1);
+			  }
 		  }
+		  jptr->T2q[0] = jptr->T2q[1] = jptr->T2q[2] = jptr->T2q[3] = jptr->T2q[4] = NULL;
 	  }
 	  /* quadrupolar interactions */
 	  for (i=0; i<s->nQ; i++) {
@@ -938,8 +1014,34 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
 			  free_double_matrix(qptr->T);
 			  qptr->T = NULL;
 		  }
-		  if (qptr->order > 1) {
+		  if (qptr->order == 2) {
 			  fill_Tquad_2(s,qptr->nuc,qptr);
+		  }
+		  if (qptr->order == 3) {
+			  fill_Tquad_2(s,qptr->nuc,qptr);
+			  fill_Tquad_3(s,qptr);
+//			  dm_print(qptr->T3a,"T3a");
+//			  dm_print(qptr->T3b,"T3b");
+//			  dm_print(qptr->T3c,"T3c");
+//			  exit(1);
+		  }
+		  if (s->labframe == 1) {
+			  mat_double *md1, *md2;
+			  md1 = Im_real(s,qptr->nuc); md2 = Iz_ham(s,qptr->nuc);
+			  qptr->T2q[0] = dm_mul(md1,md1); dm_muld(qptr->T2q[0],0.5);
+			  qptr->T2q[1] = dm_mul(md1,md2); dm_mm(0.5,md2,md1,0.5,qptr->T2q[1]);
+			  qptr->T2q[2] = qptr->T; qptr->T = NULL;
+			  free_double_matrix(md1); md1 = Ip_real(s,qptr->nuc);
+			  qptr->T2q[3] = dm_mul(md1,md2); dm_mm(-0.5,md2,md1,-0.5,qptr->T2q[3]);
+			  qptr->T2q[4] = dm_mul(md1,md1); dm_muld(qptr->T2q[4],0.5);
+			  free_double_matrix(md1); free_double_matrix(md2);
+//			  dm_print(qptr->T2q[0],"Q T2-2");
+//			  dm_print(qptr->T2q[1],"Q T2-1");
+//			  dm_print(qptr->T2q[2],"Q T20");
+//			  dm_print(qptr->T2q[3],"Q T21");
+//			  dm_print(qptr->T2q[4],"Q T22");
+		  } else {
+			  qptr->T2q[0] = qptr->T2q[1] = qptr->T2q[2] = qptr->T2q[3] = qptr->T2q[4] = NULL;
 		  }
 	  }
 	  /* mixing terms */
@@ -947,8 +1049,22 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
 		  mptr = s->MIX[i];
 		  if (mptr->type == 1) {
 			  /*  Q-CSA */
-			  fprintf(stderr,"Error: readsys - creation of Hams - mixing type 1 not implemented\n");
-			  exit(1);
+			  int qidx = quadrupole_exist(s,mptr->couple[0]);
+			  if ( qidx < 0) {
+				  fprintf(stderr,"Error: spinsys: mixing - nucleus %d has no defined quadrupole\n",mptr->couple[0]);
+				  exit(1);
+			  }
+			  int idx = shift_exist(s,mptr->couple[1]);
+			  if ( idx < 0) {
+				  fprintf(stderr,"Error: spinsys: mixing - no shift interaction defined for nucleus %d\n",mptr->couple[1]);
+				  exit(1);
+			  }
+			  mptr->qidx = qidx;
+			  mptr->idx = idx;
+			  mptr->T = T20II(s,mptr->couple[0]);
+			  dm_muld(mptr->T,sqrt(6.0));
+			  //fprintf(stderr,"Error: readsys - creation of Hams - mixing type 1 not implemented\n");
+			  //exit(1);
 		  } else {
 			  /*  Q-DD  */
 			  int qidx = quadrupole_exist(s,mptr->couple[0]);
@@ -987,6 +1103,9 @@ void readsys(Tcl_Interp* interp,Sim_info* s)
 		  printf("\n");
 	  } else {
 		  printf(" not be used\n");
+	  }
+	  if (s->labframe == 1) {
+		  printf("Simulation will be carried on in laboratory frame.\n");
 	  }
   }
 

@@ -141,6 +141,7 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
   s->propmethod = 0; // via diagonalization
   s->interpolation = INTERPOL_NOT_USED;
   s->domain = 0; // time domain simulation
+  s->labframe = 0; // rotating frame is default
   obj = Tcl_GetVar2Ex(interp,"par","method",0);
   if (obj != NULL) {
 	  if (Tcl_ListObjGetElements(interp,obj,&objc,&objv) != TCL_OK) {
@@ -192,6 +193,8 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
 		  } else if (!strncmp(buf,"frequency",4)) {
 			  s->domain = 1; // calculations will be in frequency domain
 			  s->imethod++;
+		  } else if (!strncmp(buf,"labframe",8)) {
+			  s->labframe = 1;
 		  } else {
 			  fprintf(stderr,"Error: method option '%s' not known.\n",buf);
 			  fprintf(stderr,"Must be one of : direct/idirect/gcompute/igcompute,\n");
@@ -489,12 +492,14 @@ Sim_info * sim_initialize(Tcl_Interp* interp)
 	  s->fftw_plans = NULL;
   }
 
+  s->do_avg = TclGetInt(interp,"par","do_avg",0,0);
+
   return s;
 }
 
 void sim_destroy(Sim_info* s, int this_is_copy)
 {
-  int i;
+  int i, ii;
 
   /* ZT: relaxation setup */
   if (s->relax) destroy_Relax(s->ss->nspins);
@@ -508,6 +513,9 @@ void sim_destroy(Sim_info* s, int this_is_copy)
 	  if (ptr->T) free_double_matrix(ptr->T);
 	  free_complx_vector(ptr->Rmol);
 	  free((char*)(ptr));
+	  for (ii=0; ii<5; ii++) {
+		  if (ptr->T2q[ii] != NULL) free_double_matrix(ptr->T2q[ii]);
+	  }
   }
   free(s->CS);
   DEBUGPRINT("SIM_DESTROY 3\n");
@@ -517,6 +525,9 @@ void sim_destroy(Sim_info* s, int this_is_copy)
 	  if (ptr->blk_Tiso) free_blk_mat_double(ptr->blk_Tiso);
 	  free_complx_vector(ptr->Rmol);
 	  free((char*)(ptr));
+	  for (ii=0; ii<5; ii++) {
+		  if (ptr->T2q[ii] != NULL) free_double_matrix(ptr->T2q[ii]);
+	  }
   }
   free(s->J);
   DEBUGPRINT("SIM_DESTROY 4\n");
@@ -525,6 +536,9 @@ void sim_destroy(Sim_info* s, int this_is_copy)
 	  if (ptr->blk_T) free_blk_mat_double(ptr->blk_T);
 	  free_complx_vector(ptr->Rmol);
 	  free((char*)(ptr));
+	  for (ii=0; ii<5; ii++) {
+		  if (ptr->T2q[ii] != NULL) free_double_matrix(ptr->T2q[ii]);
+	  }
   }
   free(s->DD);
   DEBUGPRINT("SIM_DESTROY 5\n");
@@ -533,8 +547,14 @@ void sim_destroy(Sim_info* s, int this_is_copy)
 	  if (ptr->T) free_double_matrix(ptr->T);
 	  if (ptr->Ta) free_double_matrix(ptr->Ta);
 	  if (ptr->Tb) free_double_matrix(ptr->Tb);
+	  if (ptr->T3a) free_double_matrix(ptr->T3a);
+	  if (ptr->T3b) free_double_matrix(ptr->T3b);
+	  if (ptr->T3c) free_double_matrix(ptr->T3c);
 	  free_complx_vector(ptr->Rmol);
 	  free((char*)(ptr));
+	  for (ii=0; ii<5; ii++) {
+		  if (ptr->T2q[ii] != NULL) free_double_matrix(ptr->T2q[ii]);
+	  }
   }
   free(s->Q);
   DEBUGPRINT("SIM_DESTROY 6\n");
@@ -1065,13 +1085,22 @@ Sim_wsp * wsp_initialize(Sim_info *s)
     if (s->nQ != 0) {
     	wsp->QTa = (mat_double**)malloc(s->nQ*sizeof(mat_double*));
     	wsp->QTb = (mat_double**)malloc(s->nQ*sizeof(mat_double*));
+    	wsp->QT3a = (mat_double**)malloc(s->nQ*sizeof(mat_double*));
+    	wsp->QT3b = (mat_double**)malloc(s->nQ*sizeof(mat_double*));
+    	wsp->QT3c = (mat_double**)malloc(s->nQ*sizeof(mat_double*));
     	for (i=0; i<s->nQ; i++) {
     		wsp->QTa[i] = s->Q[i]->Ta;
     		wsp->QTb[i] = s->Q[i]->Tb;
+    		wsp->QT3a[i] = s->Q[i]->T3a;
+    		wsp->QT3b[i] = s->Q[i]->T3b;
+    		wsp->QT3c[i] = s->Q[i]->T3c;
     	}
     } else {
     	wsp->QTa = NULL;
     	wsp->QTb = NULL;
+    	wsp->QT3a = NULL;
+    	wsp->QT3b = NULL;
+    	wsp->QT3c = NULL;
     }
     if (s->nMIX != 0) {
     	wsp->MT  = (mat_double**)malloc(s->nMIX*sizeof(mat_double*));
@@ -1102,6 +1131,15 @@ Sim_wsp * wsp_initialize(Sim_info *s)
 
     wsp->FWTASG_irow = NULL;
     wsp->FWTASG_icol = NULL;
+
+    // labframe
+    if (s->labframe == 1) {
+    	wsp->Hlab = complx_matrix(s->matdim,s->matdim,MAT_DENSE,0,s->basis);
+    	wsp->Hrflab = complx_matrix(s->matdim,s->matdim,MAT_DENSE,0,s->basis);
+    } else {
+    	wsp->Hlab = NULL;
+    	wsp->Hrflab = NULL;
+    }
 
 	DEBUGPRINT("wsp_initialize end\n");
 
@@ -1215,9 +1253,15 @@ void wsp_destroy(Sim_info *s, Sim_wsp *wsp)
     	for (i=0; i<s->nQ; i++) {
     		if (wsp->QTa[i] != s->Q[i]->Ta) free_double_matrix(wsp->QTa[i]);
     		if (wsp->QTb[i] != s->Q[i]->Tb) free_double_matrix(wsp->QTb[i]);
+    		if (wsp->QT3a[i] != s->Q[i]->T3a) free_double_matrix(wsp->QT3a[i]);
+    		if (wsp->QT3b[i] != s->Q[i]->T3b) free_double_matrix(wsp->QT3b[i]);
+    		if (wsp->QT3c[i] != s->Q[i]->T3c) free_double_matrix(wsp->QT3c[i]);
     	}
     	free(wsp->QTa);
     	free(wsp->QTb);
+    	free(wsp->QT3a);
+    	free(wsp->QT3b);
+    	free(wsp->QT3c);
     }
     if (s->nMIX != 0) {
     	for (i=0; i<s->nMIX; i++) {
@@ -1274,6 +1318,15 @@ void wsp_destroy(Sim_info *s, Sim_wsp *wsp)
     	wsp->FWTASG_icol = NULL;
     }
 
+    // labframe
+    if (wsp->Hlab != NULL) {
+    	free_complx_matrix(wsp->Hlab);
+    	wsp->Hlab = NULL;
+    }
+    if (wsp->Hrflab != NULL) {
+    	free_complx_matrix(wsp->Hrflab);
+    	wsp->Hrflab = NULL;
+    }
 
 }
 

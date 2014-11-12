@@ -1047,6 +1047,55 @@ void fill_Tquad_2(Sim_info *sim, int nuc, Quadrupole *qptr)
 	qptr->Tb = Tb;
 }
 
+void fill_Tquad_3(Sim_info *sim, Quadrupole *qptr)
+{
+	int i, ii, iii, K, L;
+	double I = ss_qn(sim->ss,qptr->nuc);
+	int dim = (int)(2*I+1);
+
+	qptr->T3a = double_matrix(sim->matdim,sim->matdim,MAT_DENSE_DIAG,0,sim->basis);
+	qptr->T3b = double_matrix(sim->matdim,sim->matdim,MAT_DENSE_DIAG,0,sim->basis);
+	qptr->T3c = double_matrix(sim->matdim,sim->matdim,MAT_DENSE_DIAG,0,sim->basis);
+	K = 1;
+	for (i=1;i<qptr->nuc;i++) {
+		K *= (int)(2.0*ss_qn(sim->ss,i)+1.0);
+	}
+	L = 1;
+	for (i=(qptr->nuc)+1; i<=sim->ss->nspins; i++) {
+		L *= (int)(2.0*ss_qn(sim->ss,i)+1.0);
+	}
+	assert(K*dim*L == sim->matdim);
+	int cnt = 0;
+	for (i=0; i<K; i++) {
+		for (ii=0; ii<dim; ii++) {
+			double m = I - ii;
+			double mm = m*m;
+			for (iii=0; iii<L; iii++) {
+				qptr->T3a->data[cnt] = sqrt(6.0)/4.0*(20*mm*mm+7*mm-(12*mm+1)*I*(I+1));
+				qptr->T3b->data[cnt] = sqrt(6.0)/4.0*(5*mm*mm+7*mm-(6*mm+2)*I*(I+1)+I*I*(I+1)*(I+1));
+				qptr->T3c->data[cnt] = 0.25*(30*mm*mm+15*mm-(24*mm+3)*I*(I+1)+2*I*I*(I+1)*(I+1));
+				cnt++;
+			}
+		}
+	}
+
+	if (sim->basis != 0) {
+		double* ddum1 = (double*)malloc(sim->matdim*sizeof(double));
+		double* ddum2 = (double*)malloc(sim->matdim*sizeof(double));
+		double* ddum3 = (double*)malloc(sim->matdim*sizeof(double));
+		int *permvec = sim->perm_table[0+sim->basis*sim->Nbasis];
+		for (i=0; i<sim->matdim; i++) {
+			ddum1[i] = qptr->T3a->data[permvec[i+1]-1];
+			ddum2[i] = qptr->T3b->data[permvec[i+1]-1];
+			ddum3[i] = qptr->T3c->data[permvec[i+1]-1];
+		}
+		free(qptr->T3a->data); qptr->T3a->data = ddum1;
+		free(qptr->T3b->data); qptr->T3a->data = ddum2;
+		free(qptr->T3c->data); qptr->T3a->data = ddum3;
+	}
+
+}
+
 void fill_Tmix_dipole(Sim_info *sim, Mixing *mptr)
 {
 	/* operator T, common for both hetero and homonuclear cases */

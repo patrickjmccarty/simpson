@@ -72,6 +72,7 @@ blk_mat_double * II(Sim_info* sim, int n1, int n2);
 blk_mat_double * T20(Sim_info* sim, int n1, int n2);
 mat_double * T20II(Sim_info *sim, int nuc);
 void fill_Tquad_2(Sim_info *sim, int nuc, Quadrupole *qptr);
+void fill_Tquad_3(Sim_info *sim, Quadrupole *qptr);
 void fill_Tmix_dipole(Sim_info *sim, Mixing *mptr);
 void fill_Tabmix_dipole(Sim_info *sim, Mixing *mptr);
 
