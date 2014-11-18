@@ -141,7 +141,7 @@
 			children = (
 				B1C6AB2619F444A000D788F0 /* libtcl8.6.dylib */,
 				B1ECDCB817B50FD000F68BD3 /* Libs */,
-				B1ECDC4A17B504DF00F68BD3 /* Simpson-4.1 */,
+				B1ECDC4A17B504DF00F68BD3 /* Simpson */,
 				B1ECDC4917B504DF00F68BD3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -154,7 +154,7 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		B1ECDC4A17B504DF00F68BD3 /* Simpson-4.1 */ = {
+		B1ECDC4A17B504DF00F68BD3 /* Simpson */ = {
 			isa = PBXGroup;
 			children = (
 				B1F6C25517D5EB4800D455FF /* pthread_barrier_mac.c */,
@@ -220,6 +220,7 @@
 				B1ECDC8E17B505D700F68BD3 /* wigner.c */,
 				B1ECDC8F17B505D700F68BD3 /* wigner.h */,
 			);
+			name = Simpson;
 			path = "Simpson-4.1";
 			sourceTree = "<group>";
 		};
@@ -260,7 +261,7 @@
 				LastUpgradeCheck = 0600;
 				ORGANIZATIONNAME = "Thomas Vosegaard";
 			};
-			buildConfigurationList = B1ECDC4317B504DF00F68BD3 /* Build configuration list for PBXProject "Simpson-4.1" */;
+			buildConfigurationList = B1ECDC4317B504DF00F68BD3 /* Build configuration list for PBXProject "Simpson" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = English;
 			hasScannedForEncodings = 0;
@@ -443,7 +444,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		B1ECDC4317B504DF00F68BD3 /* Build configuration list for PBXProject "Simpson-4.1" */ = {
+		B1ECDC4317B504DF00F68BD3 /* Build configuration list for PBXProject "Simpson" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B1ECDC4F17B504E000F68BD3 /* Debug */,
