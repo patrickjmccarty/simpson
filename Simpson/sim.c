@@ -512,10 +512,10 @@ void sim_destroy(Sim_info* s, int this_is_copy)
 	  Shift *ptr = s->CS[i];
 	  if (ptr->T) free_double_matrix(ptr->T);
 	  free_complx_vector(ptr->Rmol);
-	  free((char*)(ptr));
 	  for (ii=0; ii<5; ii++) {
 		  if (ptr->T2q[ii] != NULL) free_double_matrix(ptr->T2q[ii]);
 	  }
+	  free((char*)(ptr));
   }
   free(s->CS);
   DEBUGPRINT("SIM_DESTROY 3\n");
@@ -524,21 +524,21 @@ void sim_destroy(Sim_info* s, int this_is_copy)
 	  if (ptr->blk_T) free_blk_mat_double(ptr->blk_T);
 	  if (ptr->blk_Tiso) free_blk_mat_double(ptr->blk_Tiso);
 	  free_complx_vector(ptr->Rmol);
-	  free((char*)(ptr));
 	  for (ii=0; ii<5; ii++) {
 		  if (ptr->T2q[ii] != NULL) free_double_matrix(ptr->T2q[ii]);
 	  }
-  }
+ 	  free((char*)(ptr));
+ }
   free(s->J);
   DEBUGPRINT("SIM_DESTROY 4\n");
   for (i=0; i<s->nDD; i++) {
 	  Dipole *ptr = s->DD[i];
 	  if (ptr->blk_T) free_blk_mat_double(ptr->blk_T);
 	  free_complx_vector(ptr->Rmol);
-	  free((char*)(ptr));
 	  for (ii=0; ii<5; ii++) {
 		  if (ptr->T2q[ii] != NULL) free_double_matrix(ptr->T2q[ii]);
 	  }
+	  free((char*)(ptr));
   }
   free(s->DD);
   DEBUGPRINT("SIM_DESTROY 5\n");
@@ -551,11 +551,11 @@ void sim_destroy(Sim_info* s, int this_is_copy)
 	  if (ptr->T3b) free_double_matrix(ptr->T3b);
 	  if (ptr->T3c) free_double_matrix(ptr->T3c);
 	  free_complx_vector(ptr->Rmol);
-	  free((char*)(ptr));
 	  for (ii=0; ii<5; ii++) {
 		  if (ptr->T2q[ii] != NULL) free_double_matrix(ptr->T2q[ii]);
 	  }
-  }
+ 	  free((char*)(ptr));
+ }
   free(s->Q);
   DEBUGPRINT("SIM_DESTROY 6\n");
   for (i=0; i<s->nMIX; i++) {
