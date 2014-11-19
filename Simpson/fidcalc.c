@@ -243,8 +243,12 @@ void direct_acqblock(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp *wsp)
 		}
 	}
 	if (k*t0 > wsp->dw*(wsp->Nacq-1)) {
-		fprintf(stderr,"\n\nWARNING: acq_block is NOT properly synchronized: Hamiltonian period %g > acquisition time %g\n\n",k*t0,wsp->dw*(wsp->Nacq-1));
-		exit(1);
+		if (verbose & VERBOSE_ACQBLOCK) printf("\nWARNING: acq_block is NOT properly synchronized: Hamiltonian period %g > acquisition time %g\n\n",k*t0,wsp->dw*(wsp->Nacq-1));
+		while (k*t0 > wsp->dw*(wsp->Nacq-1)) k--;
+		if (k*t0 < wsp->dw*(wsp->Nacq-1)) k++;
+		l = (int)floor(k*t0/wsp->dw);
+		if (verbose & VERBOSE_ACQBLOCK) printf("Reducing acq_block repetitions to %d (total period %g, total acquisition %g)\n",k,k*t0,wsp->dw*(wsp->Nacq-1));
+		//exit(1);
 	}
 	for (i=1; i<k; i++) {
 		if (Tcl_EvalObjEx(interp,obj,0) != TCL_OK) {
@@ -258,7 +262,7 @@ void direct_acqblock(Tcl_Interp *interp,Tcl_Obj *obj,Sim_info *sim,Sim_wsp *wsp)
 	m = wsp->acqblock_sto - 1;  // final propagator
 	DEBUGPRINT("direct_acqblock: propagators from %d to %d\n",k,m);
 	if ( wsp->acqblock_sto - ACQBLOCK_STO_INI != l) {
-		fprintf(stderr,"Error: direct_acqblock - propagator count mismatch\n");
+		fprintf(stderr,"Error: direct_acqblock - propagator count mismatch (%d / %d)\n",wsp->acqblock_sto - ACQBLOCK_STO_INI, l);
 		exit(1);
 	}
 
