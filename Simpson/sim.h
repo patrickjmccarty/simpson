@@ -123,7 +123,7 @@ typedef struct _Sim_info {
 
 #define MAXSTO 1000
 #define ACQBLOCK_STO_INI 1001
-#define ACQBLOCK_STO_END 1500
+#define ACQBLOCK_STO_END 15000
 #define MAXOCPROPS 5120
 #define MAXOCSHAPES 4
 
