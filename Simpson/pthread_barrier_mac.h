@@ -6,7 +6,7 @@
 //  Copyright (c) 2013 Thomas Vosegaard. All rights reserved.
 //
 
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(DEFINE_PTHREAD_BARRIER_ROUTINES)
 #ifndef PTHREAD_BARRIER_H_
 #define PTHREAD_BARRIER_H_
 
